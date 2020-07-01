@@ -1,0 +1,1 @@
+Make sure that "not_found.png" and "nws.png" and the radar topo file is in this folder.
