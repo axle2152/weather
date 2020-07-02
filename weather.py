@@ -301,7 +301,7 @@ class MyApp:
                         print(len(self.icons))
                 else:
                     try:
-                        self.extd0.insert(tk.END, self.areaforecast['properties']['periods'][6]['name'] + '\n')
+                        self.extd0.insert(tk.END, self.areaforecast['properties']['periods'][6]['name'][:12] + '\n')
                         self.extd0.image_create(tk.END, image=self.icons[6])
                         lo_temp = str(self.areaforecast['properties']['periods'][7]['temperature']) + '°F'
                         hi_temp = str(self.areaforecast['properties']['periods'][6]['temperature']) + '°F'
@@ -1050,7 +1050,7 @@ class MyApp:
         clockstring = '  ' + todaysdate + "   " + hour + ":" + minute + ":" + second + " " + ap
         self.clocktext.delete('1.0', tk.END)
         self.clocktext.insert(tk.END, ' ')
-        self.clocktext.image_create(tk.END, image=self.nwsicon)
+        # self.clocktext.image_create(tk.END, image=self.nwsicon)
         self.clocktext.insert(tk.END, clockstring + '\t● ')
         self.clocktext.insert(tk.END, self.topmessage)
         self.clocktext.after(1000, self.clock)
@@ -1120,7 +1120,7 @@ class MyApp:
         sched.add_job(func=self.checkalerts, trigger='interval', minutes=15, id='check_alerts')
         sched.add_job(func=self.last_pressure_record, trigger='interval', minutes=180, id='last_pressure')
         sched.add_job(func=self.radar_download, trigger='interval', minutes=5, id='radar_download')
-        sched.add_job(func=self.warning_test, trigger='interval', minutes=2, id='warning_test')
+        # sched.add_job(func=self.warning_test, trigger='interval', minutes=2, id='warning_test')
         self.ldtext.after(2000, self.ldloop)
         sched.start()
         self.checkalerts()
