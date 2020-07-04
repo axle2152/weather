@@ -5,6 +5,7 @@ import requests
 import tkinter as tk
 import glob
 import datetime
+import ephem
 from time import strftime
 import simpleaudio as sa
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -14,10 +15,11 @@ from lxml import html, etree
 # file in the future.
 
 settings = {"resolution": "1280x720", "apptitle": "Weather Forecast Display alpha 1", "background_color": "#FF00FF",
-            "panel_color": "#000000", "foreground_color": "#FFFFFF",
+            "panel_color": "#001829", "foreground_color": "#FFFFFF",
             "forecastZone": "NCZ061", "fireWeatherZone": "NCZ061", "latitude": 35.038,
             "longitude": -83.826, "apiurl": "https://api.weather.gov/", "font": "Franklin Gothic", "fontpts": 32,
-            "radarurl": "https://radar.weather.gov/ridge/RadarImg/N0R/", "radar": "MRX", "radarurlXpath": "//tr",
+            "radarurl": "https://radar.weather.gov/ridge/RadarImg/N0R/", "radar": "MRX",
+            "warning_overlay": "https://radar.weather.gov/ridge/Warnings/Short/", "radarurlXpath": "//tr",
             "radartopoImage": os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images'), 'MRX_Topo.png'),
             "cwd": os.path.dirname(os.path.abspath(__file__)), "gridX": 87, "gridY": 10, "nwsoffice": "MRX", "nwsname": "NWS Morristown TN",
             "useragent": {"User-Agent": "Weather Forecast Display alpha", "From": "axle86@fastmail.com"},
@@ -103,6 +105,148 @@ def convert_visibility(meters):
 
 
 class MyApp:
+    def almanac(self):
+        self.topmessage = 'Almanac'
+        self.extd0.pack_forget()
+        self.extd1.pack_forget()
+        self.extd2.pack_forget()
+        self.extd3.pack_forget()
+        self.fcasttext.pack(side=tk.TOP, fill=tk.X, padx=50, pady=20)
+        self.fcasttext.delete('1.0', tk.END)
+        location = ephem.Observer()
+        location.pressure = 0
+        location.horizon = '-0:34'  # for sunset and sunrise
+        location.lat = '35.038'
+        location.lon = '-83.926'
+        # location.lat = settings['latitude']
+        # location.long = settings['longitude']
+        location_date = datetime.datetime.today() + datetime.timedelta(days=1)
+        location_date = location_date.strftime('%Y/%m/%d 04:00')
+        today_date = datetime.datetime.today().strftime('%Y/%m/%d 04:00')
+        location.date = location_date
+        # moon phases
+        moon_full = ephem.localtime(ephem.next_full_moon(today_date))
+        moon_first = ephem.localtime(ephem.next_first_quarter_moon(today_date))
+        moon_last = ephem.localtime(ephem.next_last_quarter_moon(today_date))
+        moon_new = ephem.localtime(ephem.next_new_moon(today_date))
+        print(moon_full, moon_last, moon_new, moon_first)
+        # twilight begins, sunrise, sunset, twilight ends
+        today_sunrise = ephem.localtime(location.previous_rising(ephem.Sun()))
+        tomorrow_sunrise = ephem.localtime(location.next_rising(ephem.Sun()))
+        today_sunset = ephem.localtime(location.previous_setting(ephem.Sun()))
+        tomorrow_sunset = ephem.localtime(location.next_setting(ephem.Sun()))
+        location.horizon = '-6'
+        today_twilight_begins = ephem.localtime(location.previous_rising(ephem.Sun()))
+        today_twilight_ends = ephem.localtime(location.previous_setting(ephem.Sun()))
+        tomorrow_twi_begins = ephem.localtime(location.next_rising(ephem.Sun()))
+        tomorrow_twi_ends = ephem.localtime(location.next_setting(ephem.Sun()))
+        self.fcasttext.insert(tk.END, '\t\t\tToday\t\tTomorrow\n')
+        self.fcasttext.insert(tk.END, 'Twilight Starts:\t\t\t')
+        self.fcasttext.insert(tk.END, today_twilight_begins.strftime('%I:%M %p') + '\t\t')
+        self.fcasttext.insert(tk.END, tomorrow_twi_begins.strftime('%I:%M %p') + '\n')
+        self.fcasttext.insert(tk.END, 'Sunrise: \t\t\t')
+        self.fcasttext.insert(tk.END, today_sunrise.strftime('%I:%M %p') + '\t\t')
+        self.fcasttext.insert(tk.END, tomorrow_sunrise.strftime('%I:%M %p') + '\n')
+        self.fcasttext.insert(tk.END, 'Sunset: \t\t\t')
+        self.fcasttext.insert(tk.END, today_sunset.strftime('%I:%M %p') + '\t\t')
+        self.fcasttext.insert(tk.END, tomorrow_sunset.strftime('%I:%M %p') + '\n')
+        self.fcasttext.insert(tk.END, 'Twilight Ends: \t\t\t')
+        self.fcasttext.insert(tk.END, today_twilight_ends.strftime('%I:%M %p') + '\t\t')
+        self.fcasttext.insert(tk.END, tomorrow_twi_ends.strftime('%I:%M %p') + '\n')
+        self.fcasttext.tag_configure('moon', justify='center')
+        # self.fcasttext.insert(tk.END, 'Moon Phases\n')
+        # self.fcasttext.tag_add('moon', '6.0', '7.0')
+        self.moon_full_img = PIL.Image.open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images'),
+                                                    'moon_full.png'))
+        self.moon_full_img = PIL.ImageTk.PhotoImage(self.moon_full_img)
+        self.moon_first_img = PIL.Image.open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images'),
+                                                      'moon_first.png'))
+        self.moon_first_img = PIL.ImageTk.PhotoImage(self.moon_first_img)
+        self.moon_last_img = PIL.Image.open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images'),
+                                                    'moon_last.png'))
+        self.moon_last_img = PIL.ImageTk.PhotoImage(self.moon_last_img)
+        self.moon_new_img = PIL.Image.open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images'),
+                                                   'moon_new.png'))
+        self.moon_new_img = PIL.ImageTk.PhotoImage(self.moon_new_img)
+
+        if moon_full < moon_last < moon_new < moon_first:
+            # self.fcasttext.insert(tk.END, '\tFull\t\tLast\t\tNew\t\tFirst\n')
+            self.fcasttext.insert(tk.END, '\t\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_full_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_last_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_new_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_first_img)
+            self.fcasttext.insert(tk.END, '\n\t\t')
+            self.fcasttext.insert(tk.END,'  ' +  moon_full.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, '    ' + moon_last.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, '     ' + moon_new.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, '      ' + moon_first.strftime('%b %d') + '\t')
+        elif moon_last < moon_new < moon_first < moon_full:
+            # self.fcasttext.insert(tk.END, '\tLast\t\tNew\t\tFirst\t\tFull\n')
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_last_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_new_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_first_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_full_img)
+            self.fcasttext.insert(tk.END, '\n\t')
+            self.fcasttext.insert(tk.END, moon_last.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_new.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_first.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_full.strftime('%b %d') + '\t')
+        elif moon_new < moon_first < moon_full < moon_last:
+            # self.fcasttext.insert(tk.END, '\tNew\t\tFirst\t\tFull\t\tLast\n')
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_new_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_first_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_first_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_last_img)
+            self.fcasttext.insert(tk.END, '\n\t')
+            self.fcasttext.insert(tk.END, moon_new.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_first.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_full.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_last.strftime('%b %d') + '\t')
+        elif moon_first < moon_full < moon_last < moon_new:
+            # self.fcasttext.insert(tk.END, '\tNew\t\tFirst\t\tFull\t\tLast\n')
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_new_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_first_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_first_img)
+            self.fcasttext.insert(tk.END, '\t')
+            self.fcasttext.image_create(tk.END, image=self.moon_last_img)
+            self.fcasttext.insert(tk.END, '\n\t')
+            self.fcasttext.insert(tk.END, moon_new.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_first.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_full.strftime('%b %d') + '\t')
+            self.fcasttext.insert(tk.END, moon_last.strftime('%b %d') + '\t')
+        else:
+            self.fcasttext.insert(tk.END, 'Almanac Not Available')
+            print('something is wrong with dates', moon_new, moon_first, moon_full, moon_last)
+        self.fcasttext.after(12000, self.radar_loop)
+
+    def warnings_loop(self):
+        self.topmessage = 'Active Warnings'
+        self.fcasttext.delete('1.0', tk.END)
+        try:
+            img = PIL.Image.open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'radar'),
+                                              settings['radar'] + '_Short_Warnings_0.png'))
+            self.warning_map = PIL.ImageTk.PhotoImage(img)
+            self.fcasttext.image_create(tk.END, image=self.warning_map)
+        except OSError:
+            self.fcasttext.insert(tk.END, 'Active Warnings Unavailable')
+        self.fcasttext.tag_add('radar', '1.0', tk.END)
+        self.fcasttext.after(12000, self.forecast_loop)
+
     def warning_test(self):
         self.warning_status = True
         self.warning_text = "***This is a test of the warning ticker.*** There is not a weather warning in your area." \
@@ -138,13 +282,13 @@ class MyApp:
                     if self.loops < 4:
                         self.fcasttext.after(4000, animate)
                     else:
-                        self.fcasttext.after(4000, self.forecast_loop)
+                        self.fcasttext.after(4000, self.warnings_loop)
                 else:
                     self.fcasttext.after(60, animate)
             except IndexError:
                 print('Index error on radar')
                 self.fcasttext.insert(tk.END, 'Doppler Radar Temporarily Unavailable')
-                self.fcasttext.after(4000, self.forecast_loop)
+                self.fcasttext.after(4000, self.warnings_loop)
         animate()
 
     def radar_download(self):
@@ -209,11 +353,6 @@ class MyApp:
             except OSError:
                 print('image is truncated ' + str(filelist[f]))
         print('cleaning up...')
-        for f in filelist:
-            try:
-                os.remove(os.path.join(os.path.join(settings['cwd'], 'radar'), f + 'gif'))
-            except FileNotFoundError:
-                print('could not remove ' + os.path.join(os.path.join(settings['cwd'], 'radar'), f + 'gif'))
         del_list = []
         dirlist = glob.glob('radar/*')
         for item in dirlist:
@@ -226,6 +365,26 @@ class MyApp:
                 print('removed ' + d)
             except FileNotFoundError:
                 print('could not remove ' + str(os.path.join(os.path.dirname(os.path.abspath(__file__)), '\\' + d)))
+        print('getting warning overlay...')
+        url = settings['warning_overlay'] + settings['radar'] + '_Short_Warnings_0.gif'
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'radar',
+                               settings['radar'] + '_Short_Warnings_0.gif'), 'wb') as handle:
+            response = requests.get(url, stream=True)
+            if not response.ok:
+                print(url, response)
+            for block in response.iter_content(1024):
+                if not block:
+                    break
+                handle.write(block)
+        background_radar = PIL.Image.open(settings['radartopoImage'])
+        img = PIL.Image.open(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'radar'),
+                                          settings['radar'] + '_Short_Warnings_0.gif'))
+        img = PIL.Image.alpha_composite(background_radar.convert('RGBA'), img.convert('RGBA'))
+        img = img.crop((0, 240, 600, 550))
+        img = img.resize((900, 555), PIL.Image.ANTIALIAS)
+        img.save(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'radar'),
+                              settings['radar'] + '_Short_Warnings_0.png'))
+
 
     def forecast_loop(self):
         def extended_loop():
@@ -371,7 +530,7 @@ class MyApp:
                 self.extd3.tag_configure('left', justify='left')
                 self.extd3.tag_add('center', '1.0', '3.0')
                 self.extd3.tag_add('left', '3.0', tk.END)
-                self.fcasttext.after(12000, self.radar_loop)
+                self.fcasttext.after(12000, self.almanac)
             except TypeError:
                 print('Type Error, can\'t show the extended forecast')
                 self.extd0.insert(tk.END, 'Unavailable')
@@ -394,7 +553,7 @@ class MyApp:
                 self.extd3.tag_configure('left', justify='left')
                 self.extd3.tag_add('center', '1.0', '3.0')
                 self.extd3.tag_add('left', '3.0', tk.END)
-                self.fcasttext.after(12000, self.radar_loop)
+                self.fcasttext.after(12000, self.almanac)
 
         def observation_loop():
             self.topmessage = 'Local Observations'
@@ -681,8 +840,8 @@ class MyApp:
 
     def ldloop(self):
         def ldreset():
-            if not self.isMarqueeRunning:
-                try:
+            if not self.isMarqueeRunning:  # we may want to change this to if warning status is true, pretty sure we
+                try:                       # canned this var as it appeared to be redundant
                     self.mkcanvas.pack_forget()
                 except RuntimeError:
                     print('There was a runtime error')
