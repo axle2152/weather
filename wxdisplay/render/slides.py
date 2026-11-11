@@ -459,7 +459,7 @@ class Bulletins(Slide):
         if total > 1:
             tx.draw(surf, f"Page {n} of {total}", "medium", 32, (c.right - px(56), footer_y),
                     "bottomright", self.t.dim)
-        tx.draw(surf, "Source: National Weather Service  ·  Not an official warning system", "medium", 28,
+        tx.draw(surf, "Source: National Weather Service", "medium", 28,
                 (c.centerx, footer_y), "midbottom", self.t.dim)
 
 

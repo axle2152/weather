@@ -129,10 +129,9 @@ on in a weather emergency. It is provided "as is", with no warranty, and the
 author accepts no liability for any damages, injury or loss of life from its
 use or failure. Read the full [DISCLAIMER.md](DISCLAIMER.md).
 
-The program asks you to acknowledge this the first time it runs, and reminds
-viewers on screen: a line in the conditions ticker, a notice after every alert
-in the warning crawl, and a footer on bulletin pages. If you modify it or
-remove those notices, you're responsible for the result.
+The program asks you to acknowledge this the first time it runs, and a line in
+the conditions ticker reminds viewers. If you modify it or remove those
+notices, you're responsible for the result.
 
 ## License
 

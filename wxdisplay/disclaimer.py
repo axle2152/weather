@@ -17,10 +17,6 @@ RECORD = ROOT / "disclaimer_accepted.json"
 # Rotates through the bottom bar with the current conditions.
 SHORT = "Entertainment only. For warnings, use NOAA Weather Radio & local media"
 
-# Follows every alert in the red warning crawl.
-CRAWL = ("This display is not an official warning source and may miss or delay warnings. "
-         "Get warnings from NOAA Weather Radio, Wireless Emergency Alerts, local media and weather.gov.")
-
 # Logged every time the program starts.
 CONSOLE = ("This display is for entertainment only. It is not a weather alerting system, has no "
            "redundancy, and must not be relied on in an emergency or used to alert the public. "

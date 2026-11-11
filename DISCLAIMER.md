@@ -51,12 +51,11 @@ doing so.
 ## If you change it, that's on you
 
 This project is open source under the MIT License (see `LICENSE`), so you're
-free to use, change and share it. The program reminds viewers on screen that
-it isn't an official warning source: a line in the conditions ticker, a
-notice after every alert in the warning crawl, and a footer on bulletin
-pages. If you modify the software, remove or hide those notices or the
-first-run acknowledgement, or use it against the advice above, you do so at
-your own risk and you alone are responsible for the results.
+free to use, change and share it. The program asks for the first-run
+acknowledgement and reminds viewers with a line in the conditions ticker. If
+you modify the software, remove or hide those notices, or use it against the
+advice above, you do so at your own risk and you alone are responsible for
+the results.
 
 ## Not affiliated
 

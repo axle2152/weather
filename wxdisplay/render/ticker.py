@@ -68,11 +68,7 @@ class LowerBar:
                        max_width=bar.w - self.t.px(72))
 
     def _crawl(self, surf, bar, warns, now):
-        # The disclaimer follows every alert, so it can't scroll by unseen.
-        parts = []
-        for a in warns:
-            parts += [a.crawl_text(self.app.tz), disclaimer.CRAWL]
-        text = "      •      ".join(parts)
+        text = "      •      ".join(a.crawl_text(self.app.tz) for a in warns)
         if text != self.crawl_text or self.crawl_surf is None:
             self.crawl_text = text
             self.crawl_surf = self.text.render(text, "semibold", 50, (255, 255, 255))
