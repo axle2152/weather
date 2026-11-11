@@ -49,5 +49,6 @@ Bringing the 2020 version back to life. Checked items are done.
 - [ ] Pick a background photo by weather, season or time of day
 - [ ] Short transitions between slides
 - [ ] Hourly forecast or "Your Weekend" slide; air quality; regional temperature map
-- [ ] Settings window instead of editing the file
+- [x] Settings window (press S): separate from the display, applies changes by restarting it
+- [x] Fixed-width clock digits, so the time doesn't shift as it ticks
 - [ ] Optional metric units

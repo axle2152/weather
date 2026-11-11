@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import subprocess
+import sys
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -13,7 +15,7 @@ from zoneinfo import ZoneInfo
 import pygame
 
 from .. import APP_NAME
-from ..config import Config
+from ..config import ROOT, Config, config_path, load_config
 from ..data import DataStore
 from .audio import Beeper
 from .disclaimer_screen import DisclaimerScreen
@@ -25,23 +27,44 @@ from .widgets import Backgrounds, Icons, Panels, Text
 log = logging.getLogger(__name__)
 
 FADE_SECONDS = 1.2
+CONFIG_CHECK_SECONDS = 2.0
+RELOAD, QUIT = "reload", "quit"
+
+# The settings window is a separate program; remember it across display restarts
+# so pressing S twice doesn't open two.
+_settings_proc: subprocess.Popen | None = None
+
+
+def config_signature(explicit) -> tuple | None:
+    path = config_path(explicit)
+    try:
+        st = path.stat()
+        return (str(path), st.st_mtime_ns, st.st_size)
+    except (OSError, AttributeError):
+        return None
 
 
 class App:
-    def __init__(self, cfg: Config, store: DataStore, client, headless: bool = False):
+    def __init__(self, cfg: Config, store: DataStore, client, headless: bool = False,
+                 config_file: str | None = None):
         if headless:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
             os.environ["SDL_AUDIODRIVER"] = "dummy"
+        # Keep showing when another window (like settings) is clicked, even in full screen.
+        os.environ.setdefault("SDL_VIDEO_MINIMIZE_ON_FOCUS_LOSS", "0")
         pygame.init()
         self.cfg, self.store, self.headless = cfg, store, headless
+        self.config_file = config_file
+        self.config_sig = config_signature(config_file)
         self.theme = Theme(cfg)
         flags = 0
         if cfg.display.fullscreen and not headless:
-            flags |= pygame.FULLSCREEN
+            flags |= pygame.FULLSCREEN | pygame.SCALED  # desktop full screen, scaled to fit the monitor
         elif cfg.display.borderless and not headless:
             flags |= pygame.NOFRAME
         self.screen = pygame.display.set_mode((self.theme.w, self.theme.h), flags)
-        pygame.display.set_caption(f"{APP_NAME} - {store.site.name}, {store.site.state}")
+        pygame.display.set_caption(f"{APP_NAME} - {store.site.name}, {store.site.state}"
+                                   "      S or right-click: settings   F11: full screen   Esc: quit")
         pygame.mouse.set_visible(not cfg.display.fullscreen)
         self.tz = ZoneInfo(store.site.timezone)
         self.text = Text(self.theme)
@@ -57,7 +80,7 @@ class App:
         self.slide_start = 0.0
         self.fade_from = None   # (old Background, start time) during a background crossfade
         self.bg_changed = time.monotonic()
-        self.time_slot = self.text.width("88:88:88 PM", "medium", 50)
+        self.time_slot = self.text.tabular_width("00:00:00 PM", "medium", 50)
 
     # ------------------------------------------------------------ playlist
 
@@ -109,7 +132,7 @@ class App:
         x, cy = h.x + px(36), h.centery
         r = self.text.draw(surf, date, "medium", 50, (x, cy), "midleft")
         x = r.right + px(36)
-        self.text.draw(surf, clock, "medium", 50, (x, cy), "midleft")
+        self.text.draw_tabular(surf, clock, "medium", 50, (x, cy), "midleft")
         x += self.time_slot + px(28)
         pygame.draw.circle(surf, (255, 255, 255), (x + px(14), cy), px(14))
         self.text.draw(surf, title, "medium", 50, (x + px(48), cy), "midleft",
@@ -147,23 +170,58 @@ class App:
         pygame.mouse.set_visible(not self.cfg.display.fullscreen)
         return ok
 
+    # -------------------------------------------------------------- settings
+
+    def open_settings(self) -> None:
+        """Open the settings window as its own program, so it never shows up in the picture."""
+        global _settings_proc
+        if _settings_proc is not None and _settings_proc.poll() is None:
+            log.info("The settings window is already open")
+            return
+        cmd = [sys.executable, "-m", "wxdisplay", "--settings", "--from-display"]
+        if self.config_file:
+            cmd += ["--config", str(self.config_file)]
+        try:
+            _settings_proc = subprocess.Popen(cmd, cwd=str(ROOT))
+        except OSError as e:
+            log.warning("Couldn't open the settings window: %s", e)
+
+    def config_changed(self) -> bool:
+        """True once the settings file has changed and reads back cleanly."""
+        sig = config_signature(self.config_file)
+        if sig == self.config_sig:
+            return False
+        self.config_sig = sig
+        try:
+            load_config(sig[0] if sig else None)
+        except Exception as e:  # a half-edited file: keep running, try again when it changes
+            log.warning("Settings file has a problem, keeping the current settings: %s", e)
+            return False
+        log.info("Settings changed; restarting the display")
+        return True
+
     # ---------------------------------------------------------------- loop
 
-    def run(self) -> None:
+    def run(self) -> str:
+        """Run until quit. Returns QUIT, or RELOAD if the settings file changed."""
         clock = pygame.time.Clock()
         start = time.monotonic()
         self.playlist = self.build_playlist()
         self.pos, self.slide_start = 0, start
         self.backgrounds.preload_next()
-        running = True
-        last_fps_log = start
-        while running:
+        result = None
+        last_fps_log = last_config_check = start
+        while result is None:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    result = QUIT
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                    self.open_settings()
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_q):
-                        running = False
+                        result = QUIT
+                    elif event.key == pygame.K_s:
+                        self.open_settings()
                     elif event.key in (pygame.K_F11, pygame.K_f):
                         pygame.display.toggle_fullscreen()
                     elif event.key in (pygame.K_RIGHT, pygame.K_n, pygame.K_SPACE):
@@ -183,7 +241,12 @@ class App:
             if now - last_fps_log >= float(os.environ.get("WX_FPS_LOG_SECONDS", 30)):
                 log.debug("%.1f fps", clock.get_fps())
                 last_fps_log = now
+            if now - last_config_check >= CONFIG_CHECK_SECONDS:
+                last_config_check = now
+                if self.config_changed():
+                    result = RELOAD
         pygame.quit()
+        return result
 
     # --------------------------------------------------------- screenshots
 

@@ -370,7 +370,7 @@ class RadarSlide(Slide):
         badge = pygame.Rect(c.x + px(22), c.y + px(22), px(250), px(66))
         pygame.draw.rect(surf, (0, 18, 36), badge, border_radius=px(10))
         pygame.draw.rect(surf, (255, 255, 255), badge, width=max(1, px(2)), border_radius=px(10))
-        tx.draw(surf, label, "semibold", 40, badge.center, "center", shadow=False)
+        tx.draw_tabular(surf, label, "semibold", 40, badge.center, "center", shadow=False)
         # legend
         if self.store.radar.source == "iem":
             steps = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65]

@@ -1,8 +1,10 @@
 # Weather display settings.
 #
-# Copy this file to config.toml and edit that copy. config.toml is ignored by
-# git, so your contact info stays out of the public repository.
-# Every setting is optional; anything you leave out uses the default shown here.
+# Copy this file to config.toml and edit that copy, or press S in the display
+# (or run  python weather.py --settings) to change them in a settings window.
+# config.toml is ignored by git, so your contact info stays out of the public
+# repository. Every setting is optional; anything you leave out uses the default
+# shown here.
 #
 # This display is for entertainment only and must not be relied on for weather
 # warnings or used to alert the public. See DISCLAIMER.md.
@@ -24,20 +26,21 @@ name = ""
 contact = ""
 
 [display]
-resolution = "1080p"        # "1080p", "720p", "480p", or e.g. "1600x900"
+resolution = "1080p"         # "1080p", "720p", "480p", or e.g. "1600x900"
 fullscreen = false
-borderless = false          # window without a title bar (handy for OBS window capture)
+borderless = false           # window without a title bar
 fps = 30
-slide_seconds = 10          # how long each page stays up (radar runs a little longer)
-ticker_seconds = 6          # how long each line in the bottom bar stays up
+slide_seconds = 10           # how long each page stays up (radar runs a little longer)
+ticker_seconds = 6           # how long each line in the bottom bar stays up
 clock_24h = false
-backgrounds = "backgrounds" # folder of photos (.jpg/.png); one is shown per cycle of slides
-background_seconds = 0      # 0 = change photo after each full cycle; or a number of seconds
-frosted = true              # blur the photo behind the panels (frosted glass)
+backgrounds = "backgrounds"  # folder of photos (.jpg/.png); one is shown per cycle of slides
+background_seconds = 0       # 0 = change photo after each full cycle; or a number of seconds
+frosted = true               # blur the photo behind the panels (frosted glass)
 panel_color = "#001829"
-panel_opacity = 0.78        # 0 = clear, 1 = solid
+panel_opacity = 0.78         # 0 = clear, 1 = solid
 text_color = "#FFFFFF"
 # Which slides to show, in order. "bulletins" only appears when there's an alert.
+# Choices: bulletins, current, local_obs, forecast_36, extended, almanac, radar
 slides = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar"]
 
 [observations]
@@ -62,18 +65,18 @@ radius_miles = 110
 # KAGS = "Augusta"
 
 [radar]
-source = "iem"              # "iem" = Iowa Environmental Mesonet (default), "nws" = NWS loop GIF
-zoom = 8.2                  # bigger = closer in (7 = several states, 9 = metro area)
-center = ""                 # optional: center the map elsewhere, e.g. "Macon, GA"
-frames = 10                 # 1-12 frames, five minutes apart
-frame_ms = 250              # time per frame
-min_dbz = 15                # hide echoes weaker than this (ground clutter, bugs, etc.)
+source = "iem"               # "iem" = Iowa Environmental Mesonet (default), "nws" = NWS loop GIF
+zoom = 8.2                   # bigger = closer in (7 = several states, 9 = metro area)
+center = ""                  # optional: center the map elsewhere, e.g. "Macon, GA"
+frames = 10                  # 1-12 frames, five minutes apart
+frame_ms = 250               # time per frame
+min_dbz = 15                 # hide echoes weaker than this (ground clutter, bugs, etc.)
 counties = true
 interstates = true
-labels = []                 # extra cities to label, e.g. ["Peachtree City, GA"]
+labels = []                  # extra cities to label, e.g. ["Peachtree City, GA"]
 
 [alerts]
-radius_miles = 40           # storm warnings within this distance count as local
-beep = true                 # beep when the warning crawl starts each pass
-test_warning = false        # show a test message in the crawl (to check the look)
-extra_zones = []            # more NWS zone/county codes to watch, e.g. ["GAC089", "GAZ044"]
+radius_miles = 40            # storm warnings within this distance count as local
+beep = true                  # beep when the warning crawl starts each pass
+test_warning = false         # show a test message in the crawl (to check the look)
+extra_zones = []             # more NWS zone/county codes to watch, e.g. ["GAC089", "GAZ044"]

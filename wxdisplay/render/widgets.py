@@ -93,6 +93,36 @@ class Text:
     def width(self, text: str, weight: str, size: float) -> int:
         return self.theme.font(weight, size).size(text)[0]
 
+    # Libre Franklin's digits have different widths ("1" is narrow), so a ticking
+    # clock would wiggle. These lay digits out in equal-width slots instead.
+
+    def _digit_cell(self, weight: str, size: float) -> int:
+        font = self.theme.font(weight, size)
+        return max(font.size(d)[0] for d in "0123456789")
+
+    def tabular_width(self, text: str, weight: str, size: float) -> int:
+        cell = self._digit_cell(weight, size)
+        font = self.theme.font(weight, size)
+        return sum(cell if ch.isdigit() else font.size(ch)[0] for ch in text)
+
+    def draw_tabular(self, target: pygame.Surface, text: str, weight: str, size: float, pos,
+                     anchor="topleft", color=None, shadow=True) -> pygame.Rect:
+        """Draw text with fixed-width digits, so changing numbers don't shift the layout."""
+        cell = self._digit_cell(weight, size)
+        font = self.theme.font(weight, size)
+        width = self.tabular_width(text, weight, size)
+        height = font.get_height()
+        box = pygame.Rect(0, 0, width, height)
+        setattr(box, anchor, (round(pos[0]), round(pos[1])))
+        x = box.x
+        for ch in text:
+            w = cell if ch.isdigit() else font.size(ch)[0]
+            if not ch.isspace():
+                surf = self.render(ch, weight, size, color, shadow)
+                target.blit(surf, (x + (w - font.size(ch)[0]) // 2, box.y))
+            x += w
+        return box
+
     def fit_size(self, text: str, weight: str, size: float, max_width: int, min_size: float = 18) -> float:
         while size > min_size and self.width(text, weight, size) > max_width:
             size -= 2

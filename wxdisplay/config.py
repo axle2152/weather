@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -154,3 +156,145 @@ def load_config(path: str | Path | None = None) -> Config:
     cfg.radar.frames = max(1, min(12, int(cfg.radar.frames)))
     cfg.display.panel_opacity = max(0.0, min(1.0, cfg.display.panel_opacity))
     return cfg
+
+
+# ------------------------------------------------------------------ saving
+
+def _toml_value(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else repr(round(value, 4))
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)  # JSON string escapes are valid TOML
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_toml_value(v) for v in value) + "]"
+    raise TypeError(f"can't write {value!r} to TOML")
+
+
+EXAMPLE_STATIONS = """\
+# To choose the Local Observations cities yourself, uncomment this table and
+# list station ID = name to show. Leave it out to pick automatically.
+# [observations.stations]
+# KATL = "Atlanta"
+# KAHN = "Athens"
+# KMCN = "Macon"
+# KCSG = "Columbus"
+# KRMG = "Rome"
+# KGVL = "Gainesville"
+# KCHA = "Chattanooga"
+# KAGS = "Augusta"
+"""
+
+
+def render_config(cfg: Config, example: bool = False) -> str:
+    """The settings as a commented TOML file (the same layout as config.example.toml)."""
+    v = _toml_value
+    loc, nws, d, o, r, a = cfg.location, cfg.nws, cfg.display, cfg.observations, cfg.radar, cfg.alerts
+    if example:
+        intro = """\
+# Weather display settings.
+#
+# Copy this file to config.toml and edit that copy, or press S in the display
+# (or run  python weather.py --settings) to change them in a settings window.
+# config.toml is ignored by git, so your contact info stays out of the public
+# repository. Every setting is optional; anything you leave out uses the default
+# shown here."""
+    else:
+        intro = """\
+# Weather display settings, saved by the settings window.
+#
+# Change these in the settings window (press S in the display, or run
+#  python weather.py --settings), or edit this file by hand. The display picks up
+# changes a few seconds after the file is saved."""
+    if o.stations:
+        stations = "[observations.stations]\n" + "".join(
+            f"{v(sid)} = {v(name)}\n" for sid, name in o.stations.items())
+    else:
+        stations = EXAMPLE_STATIONS
+    return f"""{intro}
+#
+# This display is for entertainment only and must not be relied on for weather
+# warnings or used to alert the public. See DISCLAIMER.md.
+
+[location]
+# Where the forecast is for. Any of these work:
+#   ZIP code:         place = "30303"
+#   City, State:      place = "Atlanta, GA"
+#   Latitude, Lon:    place = "33.749, -84.388"
+# Everything else (NWS office, forecast zone, county, radar site, time zone,
+# nearby cities) is looked up automatically.
+place = {v(loc.place)}
+# Name shown on screen. Leave blank to use the name NWS gives the location.
+name = {v(loc.name)}
+
+[nws]
+# The National Weather Service asks every app to identify itself with a way
+# to reach the person running it (email address or website).
+contact = {v(nws.contact)}
+
+[display]
+resolution = {v(d.resolution):<16}# "1080p", "720p", "480p", or e.g. "1600x900"
+fullscreen = {v(d.fullscreen)}
+borderless = {v(d.borderless):<16}# window without a title bar
+fps = {v(d.fps)}
+slide_seconds = {v(d.slide_seconds):<13}# how long each page stays up (radar runs a little longer)
+ticker_seconds = {v(d.ticker_seconds):<12}# how long each line in the bottom bar stays up
+clock_24h = {v(d.clock_24h)}
+backgrounds = {v(d.backgrounds):<15}# folder of photos (.jpg/.png); one is shown per cycle of slides
+background_seconds = {v(d.background_seconds):<8}# 0 = change photo after each full cycle; or a number of seconds
+frosted = {v(d.frosted):<19}# blur the photo behind the panels (frosted glass)
+panel_color = {v(d.panel_color)}
+panel_opacity = {v(d.panel_opacity):<13}# 0 = clear, 1 = solid
+text_color = {v(d.text_color)}
+# Which slides to show, in order. "bulletins" only appears when there's an alert.
+# Choices: {", ".join(ALL_SLIDES)}
+slides = {v(d.slides)}
+
+[observations]
+# Station for Current Conditions and the bottom bar. Blank = nearest NWS station.
+# (Find station IDs at https://www.weather.gov - e.g. KATL is Hartsfield-Jackson.)
+primary = {v(o.primary)}
+# How many cities to show on Local Observations when picked automatically,
+# and how far out (miles) automatic picks can be.
+count = {v(o.count)}
+radius_miles = {v(o.radius_miles)}
+
+{stations}
+[radar]
+source = {v(r.source):<20}# "iem" = Iowa Environmental Mesonet (default), "nws" = NWS loop GIF
+zoom = {v(r.zoom):<22}# bigger = closer in (7 = several states, 9 = metro area)
+center = {v(r.center):<20}# optional: center the map elsewhere, e.g. "Macon, GA"
+frames = {v(r.frames):<20}# 1-12 frames, five minutes apart
+frame_ms = {v(r.frame_ms):<18}# time per frame
+min_dbz = {v(r.min_dbz):<19}# hide echoes weaker than this (ground clutter, bugs, etc.)
+counties = {v(r.counties)}
+interstates = {v(r.interstates)}
+labels = {v(r.labels):<20}# extra cities to label, e.g. ["Peachtree City, GA"]
+
+[alerts]
+radius_miles = {v(a.radius_miles):<14}# storm warnings within this distance count as local
+beep = {v(a.beep):<22}# beep when the warning crawl starts each pass
+test_warning = {v(a.test_warning):<14}# show a test message in the crawl (to check the look)
+extra_zones = {v(a.extra_zones):<15}# more NWS zone/county codes to watch, e.g. ["GAC089", "GAZ044"]
+"""
+
+
+def save_config(cfg: Config, path: str | Path | None = None) -> Path:
+    """Write settings to config.toml (atomically, so the display never reads half a file)."""
+    path = Path(path) if path else ROOT / "config.toml"
+    text = render_config(cfg)
+    tomllib.loads(text)  # never write a file we couldn't read back
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    return path
+
+
+def config_path(explicit: str | Path | None = None) -> Path | None:
+    """The settings file load_config() would read."""
+    if explicit:
+        return Path(explicit)
+    return next((p for p in (ROOT / "config.toml", ROOT / "config.example.toml") if p.exists()), None)

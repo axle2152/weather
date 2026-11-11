@@ -27,9 +27,10 @@ def setup_logging(cache_dir: Path, verbose: bool) -> None:
     logging.getLogger("PIL").setLevel(logging.WARNING)
 
 
-def main(argv: list | None = None) -> int:
+def parse_args(argv):
     ap = argparse.ArgumentParser(prog=APP_NAME, description="Local weather display for streaming.")
     ap.add_argument("--config", help="settings file (default: config.toml, else config.example.toml)")
+    ap.add_argument("--settings", action="store_true", help="open the settings window")
     ap.add_argument("--place", help='override the location: ZIP, "City, ST" or "lat, lon"')
     ap.add_argument("--resolution", help="1080p, 720p, 480p or WIDTHxHEIGHT")
     ap.add_argument("--fullscreen", action="store_true", help="run full screen")
@@ -40,14 +41,15 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--accept-disclaimer", action="store_true",
                     help="print the disclaimer and accept it here instead of on the first-run screen "
                          "(for computers with no screen)")
+    ap.add_argument("--from-display", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
-    args = ap.parse_args(argv)
+    return ap.parse_args(argv)
 
+
+def load_settings(args):
+    """Settings file plus any command-line overrides."""
     cfg = load_config(args.config)
-    setup_logging(cfg.cache_dir, args.verbose)
-    log = logging.getLogger(APP_NAME)
-    log.warning(disclaimer.CONSOLE)
     if args.place:
         cfg.location.place = args.place
     if args.resolution:
@@ -58,27 +60,61 @@ def main(argv: list | None = None) -> int:
         cfg.display.fullscreen = False
     if args.test_warning:
         cfg.alerts.test_warning = True
-    if not cfg.nws.contact:
-        log.info("Tip: put your email or website under [nws] contact in config.toml; "
-                 "the National Weather Service asks apps to include one.")
+    return cfg
 
-    # Imports that pull in pygame are deferred so --check works without a display.
-    from .data import DataStore, Updater
+
+def main(argv: list | None = None) -> int:
+    args = parse_args(argv)
+    if args.settings:
+        from .settings_window import run_settings
+        return run_settings(args.config, from_display=args.from_display)
+
+    cfg = load_settings(args)
+    setup_logging(cfg.cache_dir, args.verbose)
+    log = logging.getLogger(APP_NAME)
+    log.warning(disclaimer.CONSOLE)
+    if args.accept_disclaimer and not disclaimer.accepted():
+        print(disclaimer.console_text())
+        print("\n" + disclaimer.CHECKBOX)
+        disclaimer.record_acceptance("--accept-disclaimer")
+
     from .location import resolve_site
     from .nws import NWSClient
 
-    client = NWSClient(cfg.nws.contact, cfg.cache_dir)
-    try:
-        site = resolve_site(cfg, client)
-    except (LookupError, RuntimeError) as e:
-        log.error("Location problem: %s", e)
-        return 2
-    log.info("Location: %s", site.describe())
-    if args.check:
-        print(site.describe())
-        return 0
+    previous = None
+    first = True
+    while True:
+        if not first:
+            cfg = load_settings(args)
+        client = NWSClient(cfg.nws.contact, cfg.cache_dir)
+        try:
+            site = resolve_site(cfg, client)
+        except (LookupError, RuntimeError) as e:
+            log.error("Location problem: %s", e)
+            if previous is None:
+                return 2
+            log.warning("Keeping the previous settings until the problem is fixed")
+            cfg, client, site = previous
+        log.info("Location: %s", site.describe())
+        if args.check:
+            print(site.describe())
+            return 0
+        if first and not cfg.nws.contact:
+            log.info("Tip: add your email or website as the contact in settings (press S); "
+                     "the National Weather Service asks apps to include one.")
+        previous = (cfg, client, site)
+        result = run_display(args, cfg, client, site, first)
+        if result != "reload":
+            return result
+        first = False
 
+
+def run_display(args, cfg, client, site, first: bool):
+    """Show the display until it quits ("quit"), or until the settings change ("reload")."""
+    log = logging.getLogger(APP_NAME)
+    from .data import DataStore, Updater
     from .radar import Radar
+    from .render.app import QUIT, RELOAD, App
     from .render.theme import Theme
 
     store = DataStore(site)
@@ -87,13 +123,6 @@ def main(argv: list | None = None) -> int:
         theme = Theme(cfg)
         radar = Radar(cfg, site, theme.content.size, theme.s, client.session.headers["User-Agent"])
     updater = Updater(cfg, client, store, radar)
-
-    from .render.app import App
-
-    if args.accept_disclaimer and not disclaimer.accepted():
-        print(disclaimer.console_text())
-        print("\n" + disclaimer.CHECKBOX)
-        disclaimer.record_acceptance("--accept-disclaimer")
 
     if args.screenshots:
         if not disclaimer.accepted():
@@ -109,24 +138,28 @@ def main(argv: list | None = None) -> int:
             print(p)
         return 0
 
-    app = App(cfg, store, client)
-    if not disclaimer.accepted():
-        try:
-            ok = app.ask_disclaimer()
-        except KeyboardInterrupt:
-            ok = False
-        if not ok:
-            log.info("Disclaimer not accepted; exiting")
-            return 0
-        disclaimer.record_acceptance("first-run screen")
+    app = App(cfg, store, client, config_file=args.config)
+    if first:
+        if not disclaimer.accepted():
+            try:
+                ok = app.ask_disclaimer()
+            except KeyboardInterrupt:
+                ok = False
+            if not ok:
+                log.info("Disclaimer not accepted; exiting")
+                return 0
+            disclaimer.record_acceptance("first-run screen")
+        if not args.config and not (ROOT / "config.toml").exists():
+            log.info("No config.toml yet; opening settings so you can set your location")
+            app.open_settings()
     updater.start()
     try:
-        app.run()
+        result = app.run()
     except KeyboardInterrupt:
-        pass
+        result = QUIT
     finally:
         updater.stop()
-    return 0
+    return "reload" if result == RELOAD else 0
 
 
 if __name__ == "__main__":
