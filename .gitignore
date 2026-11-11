@@ -1,0 +1,15 @@
+# Your personal settings (copy config.example.toml to config.toml)
+config.toml
+
+# Downloaded data, radar basemaps, icons, logs
+cache/
+tools/.download-cache/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Record that you read and accepted DISCLAIMER.md on this computer
+disclaimer_accepted.json
