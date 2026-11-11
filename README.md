@@ -95,13 +95,6 @@ each time it starts over.
 
 Pick and order the slides with `slides = [...]` in `config.toml`.
 
-## Using it with OBS
-
-Add a **Window Capture** of the "wxdisplay" window. Set `borderless = true`
-to drop the title bar, or use `--fullscreen` on a spare monitor. The
-backgrounds are drawn by the app, so no chroma key is needed. Streaming
-straight to YouTube without OBS is on the [roadmap](ROADMAP.md).
-
 ## Where the data comes from
 
 - **Forecasts, observations, alerts:** the [National Weather Service API](https://www.weather.gov/documentation/services-web-api) (public domain)
