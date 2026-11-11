@@ -3,6 +3,9 @@
 **This software is for entertainment and hobby use only. It is not a weather
 alerting system and must not be relied on in a weather emergency.**
 
+The program shows a short version of this the first time it runs and won't
+start until you tick a box saying you've read and understood it.
+
 ## Not for alerting the public
 
 This program is not designed, intended or tested to alert the public about
@@ -44,6 +47,16 @@ to use, or relying on this software. That includes any warning, watch,
 advisory or forecast that is late, wrong, incomplete or not shown at all.
 Anyone who uses, displays or redistributes this software accepts all risk of
 doing so.
+
+## If you change it, that's on you
+
+This project is open source under the MIT License (see `LICENSE`), so you're
+free to use, change and share it. The program reminds viewers on screen that
+it isn't an official warning source: a line in the conditions ticker, a
+notice after every alert in the warning crawl, and a footer on bulletin
+pages. If you modify the software, remove or hide those notices or the
+first-run acknowledgement, or use it against the advice above, you do so at
+your own risk and you alone are responsible for the results.
 
 ## Not affiliated
 

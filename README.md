@@ -50,8 +50,10 @@ automatically.
    python weather.py
    ```
 
-The first start takes a few extra seconds while it builds the radar map for
-your area; after that it's cached in `cache/`.
+The first time, it shows a short disclaimer. Tick the box to say you've read
+it and press Continue; it won't ask again on that computer. Then it takes a
+few extra seconds to build the radar map for your area, which is cached in
+`cache/` after that.
 
 ### Handy options
 
@@ -63,6 +65,7 @@ your area; after that it's cached in `cache/`.
 | `python weather.py --fullscreen` | Full screen |
 | `python weather.py --test-warning` | Show a test message in the red warning crawl |
 | `python weather.py --screenshots shots` | Save a picture of every slide to `shots/` and exit |
+| `python weather.py --accept-disclaimer` | Read and accept the disclaimer in the terminal instead (for a computer with no screen) |
 
 While it's running: **Esc** quits, **F11** toggles full screen, **Right
 arrow** skips to the next slide, **B** changes the background photo.
@@ -126,6 +129,13 @@ on in a weather emergency. It is provided "as is", with no warranty, and the
 author accepts no liability for any damages, injury or loss of life from its
 use or failure. Read the full [DISCLAIMER.md](DISCLAIMER.md).
 
-The display reminds viewers of this on screen: a line in the conditions
-ticker, a notice at the end of every warning crawl, and a footer on
-bulletin pages.
+The program asks you to acknowledge this the first time it runs, and reminds
+viewers on screen: a line in the conditions ticker, a notice after every alert
+in the warning crawl, and a footer on bulletin pages. If you modify it or
+remove those notices, you're responsible for the result.
+
+## License
+
+MIT; see [LICENSE](LICENSE). Use it, change it and share it freely. The
+bundled font and data have their own (open) terms, listed under
+[Where the data comes from](#where-the-data-comes-from).

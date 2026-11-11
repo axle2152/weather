@@ -10,3 +10,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Record that you read and accepted DISCLAIMER.md on this computer
+disclaimer_accepted.json

@@ -16,6 +16,7 @@ from .. import APP_NAME
 from ..config import Config
 from ..data import DataStore
 from .audio import Beeper
+from .disclaimer_screen import DisclaimerScreen
 from .slides import SLIDES, RadarSlide
 from .theme import Theme
 from .ticker import LowerBar
@@ -137,6 +138,14 @@ class App:
             log.exception("drawing %s failed", slide.key)
             slide.message(surf, "Temporarily unavailable")
         self.lower.draw(surf, now)
+
+    # ------------------------------------------------------------ disclaimer
+
+    def ask_disclaimer(self) -> bool:
+        """First-run acknowledgement. True if the box was ticked and Continue pressed."""
+        ok = DisclaimerScreen(self).run()
+        pygame.mouse.set_visible(not self.cfg.display.fullscreen)
+        return ok
 
     # ---------------------------------------------------------------- loop
 

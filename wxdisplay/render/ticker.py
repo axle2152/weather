@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pygame
 
-from .. import DISCLAIMER_CRAWL, DISCLAIMER_SHORT, units
+from .. import disclaimer, units
 
 
 class LowerBar:
@@ -25,7 +25,7 @@ class LowerBar:
         site = self.store.site
         msgs = [f"Conditions at {site.name}"]
         if o is None:
-            return msgs + ["Current conditions not available", DISCLAIMER_SHORT]
+            return msgs + ["Current conditions not available", disclaimer.SHORT]
         if o.text:
             msgs.append(o.text)
         msgs.append(f"Temp: {o.temp_f}°F" if o.temp_f is not None else "Temp: N/A")
@@ -43,7 +43,7 @@ class LowerBar:
         if o.feels_like:
             msgs.append(f"{o.feels_like[0]}: {o.feels_like[1]}°F")
         msgs.append(f"Visibility: {units.fmt_visibility(o.visibility_mi)}")
-        msgs.append(DISCLAIMER_SHORT)
+        msgs.append(disclaimer.SHORT)
         return msgs
 
     # ---- warnings ----
@@ -68,7 +68,11 @@ class LowerBar:
                        max_width=bar.w - self.t.px(72))
 
     def _crawl(self, surf, bar, warns, now):
-        text = "      •      ".join([a.crawl_text(self.app.tz) for a in warns] + [DISCLAIMER_CRAWL])
+        # The disclaimer follows every alert, so it can't scroll by unseen.
+        parts = []
+        for a in warns:
+            parts += [a.crawl_text(self.app.tz), disclaimer.CRAWL]
+        text = "      •      ".join(parts)
         if text != self.crawl_text or self.crawl_surf is None:
             self.crawl_text = text
             self.crawl_surf = self.text.render(text, "semibold", 50, (255, 255, 255))

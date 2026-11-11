@@ -8,7 +8,7 @@ import logging.handlers
 import sys
 from pathlib import Path
 
-from . import APP_NAME, DISCLAIMER_CONSOLE, __version__
+from . import APP_NAME, __version__, disclaimer
 from .config import ROOT, load_config
 
 
@@ -37,6 +37,9 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--check", action="store_true", help="look up the location, print what was found, and exit")
     ap.add_argument("--screenshots", metavar="FOLDER", help="save a picture of every slide and exit")
     ap.add_argument("--test-warning", action="store_true", help="show a test message in the warning crawl")
+    ap.add_argument("--accept-disclaimer", action="store_true",
+                    help="print the disclaimer and accept it here instead of on the first-run screen "
+                         "(for computers with no screen)")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     args = ap.parse_args(argv)
@@ -44,7 +47,7 @@ def main(argv: list | None = None) -> int:
     cfg = load_config(args.config)
     setup_logging(cfg.cache_dir, args.verbose)
     log = logging.getLogger(APP_NAME)
-    log.warning(DISCLAIMER_CONSOLE)
+    log.warning(disclaimer.CONSOLE)
     if args.place:
         cfg.location.place = args.place
     if args.resolution:
@@ -87,7 +90,16 @@ def main(argv: list | None = None) -> int:
 
     from .render.app import App
 
+    if args.accept_disclaimer and not disclaimer.accepted():
+        print(disclaimer.console_text())
+        print("\n" + disclaimer.CHECKBOX)
+        disclaimer.record_acceptance("--accept-disclaimer")
+
     if args.screenshots:
+        if not disclaimer.accepted():
+            print(disclaimer.console_text())
+            print("\nRun  python weather.py  once to read and accept this, or add --accept-disclaimer.")
+            return 3
         updater.run_once()
         app = App(cfg, store, client, headless=True)
         folder = Path(args.screenshots)
@@ -97,8 +109,17 @@ def main(argv: list | None = None) -> int:
             print(p)
         return 0
 
-    updater.start()
     app = App(cfg, store, client)
+    if not disclaimer.accepted():
+        try:
+            ok = app.ask_disclaimer()
+        except KeyboardInterrupt:
+            ok = False
+        if not ok:
+            log.info("Disclaimer not accepted; exiting")
+            return 0
+        disclaimer.record_acceptance("first-run screen")
+    updater.start()
     try:
         app.run()
     except KeyboardInterrupt:
