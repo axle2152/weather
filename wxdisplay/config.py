@@ -58,12 +58,12 @@ def normalize_resolution(text) -> str:
 _warned_resolutions: set = set()
 
 ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar",
-              "regional_radar", "regional_satellite"]
+              "regional_radar", "regional_satellite", "travel"]
 
 # Settings files record the version they were written for, so slides added later can be
 # switched on in older files (which list the slides that existed back then).
-CONFIG_VERSION = 2
-NEW_SLIDES = {2: ["regional_radar", "regional_satellite"]}
+CONFIG_VERSION = 3
+NEW_SLIDES = {2: ["regional_radar", "regional_satellite"], 3: ["travel"]}
 
 
 @dataclass
@@ -126,6 +126,13 @@ class RegionalConfig:
 
 
 @dataclass
+class TravelConfig:
+    cities: list = field(default_factory=list)  # "City, ST" strings; empty = a list of popular cities
+    scroll_speed: float = 60     # pixels per second at 1080p
+    tomorrow_after: int = 15     # from this hour (local), show tomorrow's forecast instead of today's
+
+
+@dataclass
 class AlertsConfig:
     radius_miles: float = 40     # storm-based warnings within this distance count as local
     beep: bool = True
@@ -141,6 +148,7 @@ class Config:
     observations: ObservationsConfig = field(default_factory=ObservationsConfig)
     radar: RadarConfig = field(default_factory=RadarConfig)
     regional: RegionalConfig = field(default_factory=RegionalConfig)
+    travel: TravelConfig = field(default_factory=TravelConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
     path: Path | None = None
 
@@ -202,6 +210,7 @@ def load_config(path: str | Path | None = None) -> Config:
         observations=_fill(ObservationsConfig, data.get("observations"), "observations"),
         radar=_fill(RadarConfig, data.get("radar"), "radar"),
         regional=_fill(RegionalConfig, data.get("regional"), "regional"),
+        travel=_fill(TravelConfig, data.get("travel"), "travel"),
         alerts=_fill(AlertsConfig, data.get("alerts"), "alerts"),
         path=path,
     )
@@ -264,7 +273,7 @@ def render_config(cfg: Config, example: bool = False) -> str:
     """The settings as a commented TOML file (the same layout as config.example.toml)."""
     v = _toml_value
     loc, nws, d, o, r, a = cfg.location, cfg.nws, cfg.display, cfg.observations, cfg.radar, cfg.alerts
-    rg = cfg.regional
+    rg, tr = cfg.regional, cfg.travel
     from .regions import REGIONS
     if example:
         intro = """\
@@ -359,6 +368,12 @@ per_cycle = {v(rg.per_cycle):<17}# regions shown each time the slides come aroun
 radar_frames = {v(rg.radar_frames):<14}# 1-12 frames, five minutes apart
 satellite_frames = {v(rg.satellite_frames):<10}# 1-16 frames, fifteen minutes apart
 frame_ms = {v(rg.frame_ms):<18}# time per frame
+
+[travel]
+# Cities on the Travel Cities slide, as "City, ST". Leave empty for a list of popular cities.
+cities = {v(tr.cities)}
+scroll_speed = {v(tr.scroll_speed):<14}# how fast the list scrolls (pixels per second at 1080p)
+tomorrow_after = {v(tr.tomorrow_after):<12}# from this hour of the day, show tomorrow's forecast
 
 [alerts]
 radius_miles = {v(a.radius_miles):<14}# storm warnings within this distance count as local

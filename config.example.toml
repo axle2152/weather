@@ -10,7 +10,7 @@
 # warnings or used to alert the public. See DISCLAIMER.md.
 
 # Lets newer versions of the app switch on slides added since this file was written.
-config_version = 2
+config_version = 3
 
 [location]
 # Where the forecast is for. Any of these work:
@@ -43,8 +43,8 @@ panel_color = "#001829"
 panel_opacity = 0.78         # 0 = clear, 1 = solid
 text_color = "#FFFFFF"
 # Which slides to show, in order. "bulletins" only appears when there's an alert.
-# Choices: bulletins, current, local_obs, forecast_36, extended, almanac, radar, regional_radar, regional_satellite
-slides = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar", "regional_radar", "regional_satellite"]
+# Choices: bulletins, current, local_obs, forecast_36, extended, almanac, radar, regional_radar, regional_satellite, travel
+slides = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar", "regional_radar", "regional_satellite", "travel"]
 
 [observations]
 # Station for Current Conditions and the bottom bar. Blank = nearest NWS station.
@@ -87,6 +87,12 @@ per_cycle = 1                # regions shown each time the slides come around
 radar_frames = 8             # 1-12 frames, five minutes apart
 satellite_frames = 8         # 1-16 frames, fifteen minutes apart
 frame_ms = 220               # time per frame
+
+[travel]
+# Cities on the Travel Cities slide, as "City, ST". Leave empty for a list of popular cities.
+cities = []
+scroll_speed = 60            # how fast the list scrolls (pixels per second at 1080p)
+tomorrow_after = 15          # from this hour of the day, show tomorrow's forecast
 
 [alerts]
 radius_miles = 40            # storm warnings within this distance count as local

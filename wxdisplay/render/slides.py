@@ -472,6 +472,73 @@ class RegionalSatelliteSlide(RegionalSlide):
                 shadow=False)
 
 
+# ------------------------------------------------------------- travel cities
+
+class TravelSlide(Slide):
+    """Popular cities' forecasts in a slowly scrolling list."""
+
+    key = "travel"
+    title = "Travel Cities Forecast"
+    ROW = 84          # row height at 1080p
+    PAUSE = 2.5       # seconds to hold at the top and bottom
+
+    def available(self):
+        return bool(self.store.travel)
+
+    def _tomorrow(self) -> bool:
+        return dt.datetime.now(self.app.tz).hour >= self.cfg.travel.tomorrow_after
+
+    def _list_rect(self) -> pygame.Rect:
+        c = self.t.content
+        return pygame.Rect(c.x, c.y + self.px(96), c.w, c.h - self.px(110))
+
+    def _scroll_px(self) -> float:
+        total = len(self.store.travel) * self.px(self.ROW)
+        return max(0.0, total - self._list_rect().h)
+
+    def _speed(self) -> float:
+        return max(10.0, self.cfg.travel.scroll_speed) * self.t.s
+
+    def duration(self, page):
+        if not self.available():
+            return self.cfg.display.slide_seconds
+        return max(self.cfg.display.slide_seconds, self._scroll_px() / self._speed() + 2 * self.PAUSE)
+
+    def draw(self, surf, page, t):
+        from ..cities import day_forecast
+        c, px, tx, cx = self.t.content, self.px, self.text, self.t.cx
+        tomorrow = self._tomorrow()
+        day = dt.datetime.now(self.app.tz) + dt.timedelta(days=1 if tomorrow else 0)
+        tx.draw(surf, ("Tomorrow, " if tomorrow else "Today, ") + day.strftime("%A"), "semibold", 44,
+                (c.x + px(44), c.y + px(28)), color=self.t.accent)
+        cols = {"icon": c.x + cx(640), "wx": c.x + cx(730), "lo": c.x + cx(1560), "hi": c.x + cx(1760)}
+        tx.draw(surf, "Low", "semibold", 34, (cols["lo"], c.y + px(36)), "topright", self.t.lo)
+        tx.draw(surf, "High", "semibold", 34, (cols["hi"], c.y + px(36)), "topright", self.t.hi)
+        box = self._list_rect()
+        offset = min(self._scroll_px(), max(0.0, t - self.PAUSE) * self._speed())
+        rh = px(self.ROW)
+        clip = surf.get_clip()
+        surf.set_clip(box)
+        for i, (city, fc) in enumerate(self.store.travel):
+            y = box.y + i * rh - offset
+            if y + rh < box.y or y > box.bottom:
+                continue
+            cy = y + rh / 2
+            d = day_forecast(city, fc, tomorrow)
+            tx.draw(surf, tx.ellipsize(city.name, "semibold", 46, cx(560)), "semibold", 46,
+                    (c.x + px(44), cy), "midleft")
+            icon = self.icons.weather(d.icon, px(64), nws_size="medium")
+            if icon:
+                surf.blit(icon, icon.get_rect(center=(cols["icon"], cy)))
+            tx.draw(surf, tx.ellipsize(d.short or "--", "medium", 40, cols["lo"] - cols["wx"] - cx(170)),
+                    "medium", 40, (cols["wx"], cy), "midleft")
+            tx.draw(surf, f"{d.low}°" if d.low is not None else "--", "semibold", 48, (cols["lo"], cy),
+                    "midright", self.t.lo)
+            tx.draw(surf, f"{d.high}°" if d.high is not None else "--", "semibold", 48, (cols["hi"], cy),
+                    "midright", self.t.hi)
+        surf.set_clip(clip)
+
+
 # ----------------------------------------------------------------- bulletins
 
 def _clean_bulletin(text: str) -> str:
@@ -549,4 +616,4 @@ class Bulletins(Slide):
 
 SLIDES = {cls.key: cls for cls in (Bulletins, CurrentConditions, LocalObservations, Forecast36,
                                    Extended, AlmanacSlide, RadarSlide, RegionalRadarSlide,
-                                   RegionalSatelliteSlide)}
+                                   RegionalSatelliteSlide, TravelSlide)}

@@ -35,6 +35,7 @@ SLIDE_NAMES = {
     "radar": "Doppler Radar",
     "regional_radar": "Regional Radar (rotates through regions)",
     "regional_satellite": "Regional Satellite (rotates through regions)",
+    "travel": "Travel Cities Forecast",
 }
 STATION_RE = re.compile(r"^[A-Z0-9]{3,5}$")
 ZONE_RE = re.compile(r"^[A-Z]{2}[CZ]\d{3}$")
@@ -59,6 +60,7 @@ class SettingsWindow:
         self._observations_tab()
         self._radar_tab()
         self._regional_tab()
+        self._travel_tab()
         self._alerts_tab()
 
         bar = ttk.Frame(outer, padding=(0, PAD, 0, 0))
@@ -378,6 +380,20 @@ class SettingsWindow:
         self._row(f, 9, "Time per frame (ms)", self._spin(f, self.reg_frame_ms, 50, 2000, 50))
         self._region_mode_changed()
 
+    def _travel_tab(self) -> None:
+        f = self._tab("Travel")
+        tr = self.cfg.travel
+        self.travel_speed = tk.StringVar(value=_num(tr.scroll_speed))
+        self.travel_after = tk.StringVar(value=str(tr.tomorrow_after))
+        self.travel_text = tk.Text(f, width=34, height=12, font="TkDefaultFont")
+        self.travel_text.insert("1.0", "\n".join(tr.cities))
+        self._row(f, 0, "Cities", self.travel_text,
+                  'One per line, like "Savannah, GA". Leave empty for a list of popular US cities.')
+        self._row(f, 2, "Scroll speed", self._spin(f, self.travel_speed, 10, 200, 5),
+                  "Pixels per second at 1080p.")
+        self._row(f, 4, "Show tomorrow from", self._spin(f, self.travel_after, 0, 23),
+                  "Hour of the day (0-23). Before this the list shows today's forecast.")
+
     def _refresh_regions(self, select: int | None = None) -> None:
         self.region_list.delete(*self.region_list.get_children())
         for i, (name, on) in enumerate(self.region_order):
@@ -569,7 +585,8 @@ class SettingsWindow:
         names = [n for n, v in vars(self).items() if isinstance(v, tk.Variable)]
         values = tuple((n, getattr(self, n).get()) for n in sorted(names) if n not in ("new_id", "new_name"))
         return values + (tuple(self.slide_order), tuple(self._stations().items()),
-                         self.labels_text.get("1.0", "end").strip(), tuple(self.region_order))
+                         self.labels_text.get("1.0", "end").strip(), tuple(self.region_order),
+                         self.travel_text.get("1.0", "end").strip())
 
     def collect(self) -> tuple[Config | None, list]:
         """Build a Config from the form. Returns (config, errors)."""
@@ -650,6 +667,13 @@ class SettingsWindow:
         rg.radar_frames = number(self.reg_radar_frames, "Regional radar frames", 1, 12, int)
         rg.satellite_frames = number(self.reg_sat_frames, "Regional satellite frames", 1, 16, int)
         rg.frame_ms = number(self.reg_frame_ms, "Regional time per frame", 50, 2000, int)
+
+        tr = cfg.travel
+        tr.cities = [x.strip() for x in self.travel_text.get("1.0", "end").splitlines() if x.strip()]
+        for city in tr.cities:
+            place_ok(city, "Travel city")
+        tr.scroll_speed = number(self.travel_speed, "Travel scroll speed", 10, 200)
+        tr.tomorrow_after = number(self.travel_after, "Show tomorrow from", 0, 23, int)
 
         a = cfg.alerts
         a.radius_miles = number(self.alert_radius, "Storm warnings within", 5, 200)

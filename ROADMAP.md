@@ -43,7 +43,7 @@ Bringing the 2020 version back to life. Checked items are done.
       Northwest and so on)
 - [ ] Regional map: current conditions and the forecast for cities from your region down to
       your area, as temperatures and icons on a map
-- [ ] Travel Cities: a slowly scrolling list of popular US cities with an icon, low and high
+- [x] Travel Cities: a slowly scrolling list of popular US cities with an icon, low and high
 - [ ] 30-day outlook from the Climate Prediction Center (above/below normal temperature and
       precipitation for your area)
 

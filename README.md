@@ -62,6 +62,7 @@ settings a few seconds later. You can also open it on its own with
 | Observations | The Current Conditions station; Local Observations cities picked automatically or chosen by you |
 | Radar | Radar source, zoom, map center, loop length and speed, clutter filter, map lines, extra city labels |
 | Regional | Which US regions the regional radar and satellite rotate through, how many per pass, loop lengths |
+| Travel | The Travel Cities list, scroll speed, and when it switches to tomorrow's forecast |
 | Alerts | How far away storm warnings count, the beep, a test warning, extra NWS zones to watch |
 
 Settings are saved in `config.toml` (which git ignores, so your contact info
@@ -108,6 +109,7 @@ opacity on the Display tab in settings.
 | Doppler Radar | An animated loop over a map of your area, with warning boxes drawn on it |
 | Regional Radar | Radar for a US region (Southeast, Ohio Valley, Pacific Northwest and so on); a different region each time the slides come around, starting with yours |
 | Regional Satellite | An infrared satellite loop for the same region: bright white for high, cold cloud tops |
+| Travel Cities Forecast | A slowly scrolling list of popular US cities with an icon, low and high (today's, or tomorrow's later in the day) |
 
 The bottom bar cycles through the current conditions. When a warning is in
 effect for your area, it turns red and crawls the warning text, with a beep
