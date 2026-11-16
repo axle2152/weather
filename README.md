@@ -61,7 +61,7 @@ settings a few seconds later. You can also open it on its own with
 | Slides | Which slides to show and in what order |
 | Observations | The Current Conditions station; Local Observations cities picked automatically or chosen by you |
 | Radar | Radar source, zoom, map center, loop length and speed, clutter filter, map lines, extra city labels |
-| Regional | Which US regions the regional radar and satellite rotate through, how many per pass, loop lengths |
+| Regional | Which US regions the regional radar and satellite rotate through, how many per pass, loop lengths; the regional map's zoom and number of towns |
 | Travel | The Travel Cities list, scroll speed, and when it switches to tomorrow's forecast |
 | Alerts | How far away storm warnings count, the beep, a test warning, extra NWS zones to watch |
 
@@ -109,6 +109,7 @@ opacity on the Display tab in settings.
 | Doppler Radar | An animated loop over a map of your area, with warning boxes drawn on it |
 | Regional Radar | Radar for a US region (Southeast, Ohio Valley, Pacific Northwest and so on); a different region each time the slides come around, starting with yours |
 | Regional Satellite | An infrared satellite loop for the same region: bright white for high, cold cloud tops |
+| Regional Conditions / Regional Forecast | A map from your area out to the surrounding region: current temperatures and sky for about ten towns, then the day's highs and lows |
 | Travel Cities Forecast | A slowly scrolling list of popular US cities with an icon, low and high (today's, or tomorrow's later in the day) |
 
 The bottom bar cycles through the current conditions. When a warning is in

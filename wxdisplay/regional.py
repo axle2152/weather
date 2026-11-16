@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 import requests
 
@@ -103,3 +104,87 @@ class RegionalMaps:
         return RadarFrames("satellite", frames, None, view, labels,
                            f"Satellite: NOAA GOES via Iowa Environmental Mesonet  ·  {MAP_CREDIT}",
                            overlay=overlay, region=name)
+
+
+# ----------------------------------------------------------- regional weather map
+
+@dataclass
+class RegionalMapData:
+    view: object
+    basemap: object                # PIL RGB image
+    cities: list                   # [(cities.City, x, y, is_home)]
+    observations: dict             # city name -> Obs | None
+    forecasts: dict                # city name -> Forecast
+
+
+class RegionalWeatherMap:
+    """Towns from your area out to the surrounding region, with current conditions and forecasts."""
+
+    def __init__(self, cfg: Config, site: Site, size: tuple, scale: float, user_agent: str, citywx):
+        import math
+        from . import geo
+        from .radar import MapStyle
+        self.cfg, self.site, self.scale, self.citywx = cfg, site, scale, citywx
+        session = requests.Session()
+        session.headers["User-Agent"] = user_agent
+        self.view = geo.MapView(site.lat, site.lon, cfg.regional_map.zoom + math.log2(scale), *size)
+        style = MapStyle(counties=False, interstates=False, label_min_pop=10 ** 9)
+        self.map = BaseMap(cfg, self.view, scale, style, session)
+        self.basemap = None
+        self.cities = None
+        self.forecasts: dict = {}
+        self.forecast_time = 0.0
+
+    def _pick(self) -> list:
+        """[(name, lat, lon, is_home)]: home plus well-spread bigger towns that fit on the map."""
+        from . import geo
+        from .cities import lookup_places
+        v, sc = self.view, self.scale
+        chosen = [(self.site.name, self.site.lat, self.site.lon, True)]
+        if self.cfg.regional_map.cities:
+            return chosen + [(n, la, lo, False) for n, la, lo in lookup_places(self.cfg.regional_map.cities)]
+
+        def fits(x, y):
+            return 120 * sc < x < v.width - 170 * sc and 80 * sc < y < v.height - 120 * sc
+
+        def clear(x, y, picked):
+            for _, la, lo, _ in picked:
+                px, py = v.to_px(lo, la)
+                if abs(px - x) < 250 * sc and abs(py - y) < 150 * sc:
+                    return False
+            return True
+        # Bigger towns first, but closer ones count for more, so the map fills in around home.
+        def score(p):
+            miles = geo.miles_between(self.site.lat, self.site.lon, p[2], p[3])
+            return p[4] / (1 + (miles / 120) ** 2)
+        cands = sorted((p for p in geo.places() if p[4] >= 15000 and "-" not in p[1] and "/" not in p[1]),
+                       key=score, reverse=True)
+        for st, name, lat, lon, pop in cands:
+            if len(chosen) >= self.cfg.regional_map.count:
+                break
+            x, y = v.to_px(lon, lat)
+            if fits(x, y) and clear(x, y, chosen) and all(name != c[0] for c in chosen):
+                chosen.append((name, lat, lon, False))
+        return chosen
+
+    def update(self):
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+        if self.basemap is None:
+            self.basemap = self.map.basemap()
+        if self.cities is None:
+            picks = self._pick()
+            resolved = self.citywx.resolve_many([(n, la, lo) for n, la, lo, _ in picks], want_station=True)
+            home_names = {n for n, _, _, h in picks if h}
+            self.cities = [(c, *self.view.to_px(c.lon, c.lat), c.name in home_names) for c in resolved]
+        cities = [c for c, *_ in self.cities]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            obs = list(pool.map(self.citywx.current, cities))
+            if time.time() - self.forecast_time > 3600 or not self.forecasts:
+                fcs = list(pool.map(self.citywx.forecast, cities))
+                for c, fc in zip(cities, fcs):
+                    if fc:
+                        self.forecasts[c.name] = fc
+                self.forecast_time = time.time()
+        observations = {c.name: o for c, o in zip(cities, obs)}
+        return RegionalMapData(self.view, self.basemap, self.cities, observations, dict(self.forecasts))

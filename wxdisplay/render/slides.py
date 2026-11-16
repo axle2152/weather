@@ -472,6 +472,86 @@ class RegionalSatelliteSlide(RegionalSlide):
                 shadow=False)
 
 
+# ------------------------------------------------------------ regional map
+
+class RegionalMapSlide(Slide):
+    """Page 1: current temperatures around the region. Page 2: the day's highs and night's lows."""
+
+    key = "regional_map"
+    title = "Regional Conditions"
+
+    def __init__(self, app):
+        super().__init__(app)
+        self._base = None
+        self._base_for = None
+
+    def available(self):
+        return self.store.regional_map is not None
+
+    def pages(self):
+        return 2
+
+    def title_for(self, page):
+        return "Regional Conditions" if page == 0 else "Regional Forecast"
+
+    def _tomorrow(self) -> bool:
+        return dt.datetime.now(self.app.tz).hour >= self.cfg.travel.tomorrow_after
+
+    def draw(self, surf, page, t):
+        from ..cities import day_forecast
+        data = self.store.regional_map
+        c, px, tx = self.t.content, self.px, self.text
+        if data is None:
+            self.message(surf, "Loading the regional map…")
+            return
+        if self._base_for is not data.basemap:
+            self._base = round_corners(pil_to_surface(data.basemap.resize(c.size)), self.t.radius)
+            self._base_for = data.basemap
+        surf.blit(self._base, c)
+        if page == 0:
+            caption = "Current Temperatures"
+        else:
+            tomorrow = self._tomorrow()
+            caption = ("Tomorrow" if tomorrow else "Today") + "'s Highs and Lows"
+        w = tx.width(caption, "semibold", 34) + px(44)
+        badge = pygame.Rect(c.x + px(22), c.y + px(22), w, px(62))
+        pygame.draw.rect(surf, (0, 18, 36), badge, border_radius=px(10))
+        pygame.draw.rect(surf, (255, 255, 255), badge, width=max(1, px(2)), border_radius=px(10))
+        tx.draw(surf, caption, "semibold", 34, badge.center, "center", shadow=False)
+
+        icon_size = px(66)
+        for city, x, y, home in data.cities:
+            if not (0 <= x <= c.w and 0 <= y <= c.h):
+                continue
+            x, y = c.x + x, c.y + y
+            if page == 0:
+                o = data.observations.get(city.name)
+                icon_url = o.icon if o else None
+                temps = [(f"{o.temp_f}°" if o and o.temp_f is not None else "--", self.t.text, 52)]
+            else:
+                fc = data.forecasts.get(city.name)
+                d = day_forecast(city, fc, tomorrow) if fc else None
+                icon_url = d.icon if d else None
+                temps = [(f"{d.high}°" if d and d.high is not None else "--", self.t.hi, 44),
+                         (f"{d.low}°" if d and d.low is not None else "--", self.t.lo, 36)]
+            icon = self.icons.weather(icon_url, icon_size, nws_size="medium")
+            # marker: icon to the left of the spot, temperatures to the right, name underneath
+            if icon:
+                surf.blit(icon, icon.get_rect(midright=(x - px(4), y)))
+            if len(temps) == 1:
+                tx.draw(surf, temps[0][0], "bold", temps[0][2], (x + px(8), y), "midleft", temps[0][1],
+                        outline=True)
+            else:
+                tx.draw(surf, temps[0][0], "bold", temps[0][2], (x + px(8), y + px(2)), "bottomleft", temps[0][1],
+                        outline=True)
+                tx.draw(surf, temps[1][0], "bold", temps[1][2], (x + px(10), y + px(2)), "topleft", temps[1][1],
+                        outline=True)
+            tx.draw(surf, city.name, "semibold", 30 if home else 27, (x, y + icon_size / 2 + px(6)), "midtop",
+                    self.t.accent if home else (255, 255, 255), outline=True)
+        tx.draw(surf, "Source: National Weather Service  ·  Map: USGS, US Census Bureau", "medium", 22,
+                (c.x + px(24), c.bottom - px(18)), "bottomleft", (220, 225, 230), shadow=False, outline=True)
+
+
 # ------------------------------------------------------------- travel cities
 
 class TravelSlide(Slide):
@@ -616,4 +696,4 @@ class Bulletins(Slide):
 
 SLIDES = {cls.key: cls for cls in (Bulletins, CurrentConditions, LocalObservations, Forecast36,
                                    Extended, AlmanacSlide, RadarSlide, RegionalRadarSlide,
-                                   RegionalSatelliteSlide, TravelSlide)}
+                                   RegionalSatelliteSlide, RegionalMapSlide, TravelSlide)}

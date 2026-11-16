@@ -114,7 +114,7 @@ def run_display(args, cfg, client, site, first: bool):
     log = logging.getLogger(APP_NAME)
     from .data import DataStore, Updater
     from .radar import Radar
-    from .regional import RegionalMaps
+    from .regional import RegionalMaps, RegionalWeatherMap
     from .render.app import QUIT, RELOAD, App
     from .render.theme import Theme
 
@@ -126,7 +126,10 @@ def run_display(args, cfg, client, site, first: bool):
     if {"regional_radar", "regional_satellite"} & set(cfg.display.slides):
         regional = RegionalMaps(cfg, site, theme.content.size, theme.s, ua)
         store.region_list = regional.regions
-    updater = Updater(cfg, client, store, radar, regional)
+    regional_map = None
+    if "regional_map" in cfg.display.slides:
+        regional_map = RegionalWeatherMap(cfg, site, theme.content.size, theme.s, ua, None)
+    updater = Updater(cfg, client, store, radar, regional, regional_map)
 
     if args.screenshots:
         if not disclaimer.accepted():

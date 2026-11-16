@@ -41,7 +41,7 @@ Bringing the 2020 version back to life. Checked items are done.
       resolution check so a bad value can't crash the app
 - [x] Regional radar and satellite: cycle through US regions (Southeast, Midwest, Pacific
       Northwest and so on)
-- [ ] Regional map: current conditions and the forecast for cities from your region down to
+- [x] Regional map: current conditions and the forecast for cities from your region down to
       your area, as temperatures and icons on a map
 - [x] Travel Cities: a slowly scrolling list of popular US cities with an icon, low and high
 - [ ] 30-day outlook from the Climate Prediction Center (above/below normal temperature and

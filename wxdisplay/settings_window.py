@@ -35,6 +35,7 @@ SLIDE_NAMES = {
     "radar": "Doppler Radar",
     "regional_radar": "Regional Radar (rotates through regions)",
     "regional_satellite": "Regional Satellite (rotates through regions)",
+    "regional_map": "Regional Conditions and Forecast map",
     "travel": "Travel Cities Forecast",
 }
 STATION_RE = re.compile(r"^[A-Z0-9]{3,5}$")
@@ -378,6 +379,13 @@ class SettingsWindow:
         self._row(f, 5, "Radar frames", self._spin(f, self.reg_radar_frames, 1, 12), "Five minutes apart.")
         self._row(f, 7, "Satellite frames", self._spin(f, self.reg_sat_frames, 1, 16), "Fifteen minutes apart.")
         self._row(f, 9, "Time per frame (ms)", self._spin(f, self.reg_frame_ms, 50, 2000, 50))
+        rm = self.cfg.regional_map
+        self.map_zoom = tk.StringVar(value=_num(rm.zoom))
+        self.map_count = tk.StringVar(value=str(rm.count))
+        ttk.Separator(f).grid(row=10, column=0, columnspan=2, sticky="ew", pady=PAD * 2)
+        self._row(f, 11, "Regional map zoom", self._spin(f, self.map_zoom, 6.0, 9.0, 0.1),
+                  "For the Regional Conditions and Forecast map. Bigger = closer in (local radar is 8.2).")
+        self._row(f, 13, "Towns on the map", self._spin(f, self.map_count, 4, 16))
         self._region_mode_changed()
 
     def _travel_tab(self) -> None:
@@ -667,6 +675,8 @@ class SettingsWindow:
         rg.radar_frames = number(self.reg_radar_frames, "Regional radar frames", 1, 12, int)
         rg.satellite_frames = number(self.reg_sat_frames, "Regional satellite frames", 1, 16, int)
         rg.frame_ms = number(self.reg_frame_ms, "Regional time per frame", 50, 2000, int)
+        cfg.regional_map.zoom = round(number(self.map_zoom, "Regional map zoom", 6.0, 9.0), 1)
+        cfg.regional_map.count = number(self.map_count, "Towns on the map", 4, 16, int)
 
         tr = cfg.travel
         tr.cities = [x.strip() for x in self.travel_text.get("1.0", "end").splitlines() if x.strip()]

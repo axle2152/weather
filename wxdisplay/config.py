@@ -58,12 +58,12 @@ def normalize_resolution(text) -> str:
 _warned_resolutions: set = set()
 
 ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar",
-              "regional_radar", "regional_satellite", "travel"]
+              "regional_radar", "regional_satellite", "regional_map", "travel"]
 
 # Settings files record the version they were written for, so slides added later can be
 # switched on in older files (which list the slides that existed back then).
 CONFIG_VERSION = 3
-NEW_SLIDES = {2: ["regional_radar", "regional_satellite"], 3: ["travel"]}
+NEW_SLIDES = {2: ["regional_radar", "regional_satellite"], 3: ["regional_map", "travel"]}
 
 
 @dataclass
@@ -126,6 +126,13 @@ class RegionalConfig:
 
 
 @dataclass
+class RegionalMapConfig:
+    zoom: float = 7.6            # map zoom at 1080p (the local radar is 8.2)
+    count: int = 10              # towns to show when picking automatically
+    cities: list = field(default_factory=list)  # "City, ST" strings; empty = pick automatically
+
+
+@dataclass
 class TravelConfig:
     cities: list = field(default_factory=list)  # "City, ST" strings; empty = a list of popular cities
     scroll_speed: float = 60     # pixels per second at 1080p
@@ -148,6 +155,7 @@ class Config:
     observations: ObservationsConfig = field(default_factory=ObservationsConfig)
     radar: RadarConfig = field(default_factory=RadarConfig)
     regional: RegionalConfig = field(default_factory=RegionalConfig)
+    regional_map: RegionalMapConfig = field(default_factory=RegionalMapConfig)
     travel: TravelConfig = field(default_factory=TravelConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
     path: Path | None = None
@@ -210,6 +218,7 @@ def load_config(path: str | Path | None = None) -> Config:
         observations=_fill(ObservationsConfig, data.get("observations"), "observations"),
         radar=_fill(RadarConfig, data.get("radar"), "radar"),
         regional=_fill(RegionalConfig, data.get("regional"), "regional"),
+        regional_map=_fill(RegionalMapConfig, data.get("regional_map"), "regional_map"),
         travel=_fill(TravelConfig, data.get("travel"), "travel"),
         alerts=_fill(AlertsConfig, data.get("alerts"), "alerts"),
         path=path,
@@ -273,7 +282,7 @@ def render_config(cfg: Config, example: bool = False) -> str:
     """The settings as a commented TOML file (the same layout as config.example.toml)."""
     v = _toml_value
     loc, nws, d, o, r, a = cfg.location, cfg.nws, cfg.display, cfg.observations, cfg.radar, cfg.alerts
-    rg, tr = cfg.regional, cfg.travel
+    rg, tr, rm = cfg.regional, cfg.travel, cfg.regional_map
     from .regions import REGIONS
     if example:
         intro = """\
@@ -368,6 +377,12 @@ per_cycle = {v(rg.per_cycle):<17}# regions shown each time the slides come aroun
 radar_frames = {v(rg.radar_frames):<14}# 1-12 frames, five minutes apart
 satellite_frames = {v(rg.satellite_frames):<10}# 1-16 frames, fifteen minutes apart
 frame_ms = {v(rg.frame_ms):<18}# time per frame
+
+[regional_map]
+# The Regional Conditions / Regional Forecast map around your location.
+zoom = {v(rm.zoom):<22}# bigger = closer in (the local radar is 8.2)
+count = {v(rm.count):<21}# towns to show when picking automatically
+cities = {v(rm.cities):<20}# or list your own, e.g. ["Macon, GA", "Rome, GA"]
 
 [travel]
 # Cities on the Travel Cities slide, as "City, ST". Leave empty for a list of popular cities.

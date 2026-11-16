@@ -355,6 +355,7 @@ class DataStore:
         self.regions_wanted: list = []      # set by the renderer: regions shown now and next
         self.region_list: list = []         # every region the regional slides rotate through
         self.travel: list = []              # [(cities.City, Forecast)]
+        self.regional_map = None            # regional.RegionalMapData
         self.versions: dict = {}
         self.updated: dict = {}
 
@@ -375,7 +376,8 @@ class DataStore:
 class Updater(threading.Thread):
     """Refreshes the DataStore on a schedule. Network calls only ever happen here."""
 
-    def __init__(self, cfg: Config, client: NWSClient, store: DataStore, radar=None, regional=None):
+    def __init__(self, cfg: Config, client: NWSClient, store: DataStore, radar=None, regional=None,
+                 regional_map=None):
         super().__init__(name="updater", daemon=True)
         self.cfg, self.client, self.store, self.radar = cfg, client, store, radar
         self.regional = regional
@@ -394,10 +396,16 @@ class Updater(threading.Thread):
         if regional is not None:
             self.jobs.append(("regional", self.update_regional, lambda: 60))
         self.citywx = None
-        if "travel" in cfg.display.slides:
+        self.regional_map = regional_map
+        if "travel" in cfg.display.slides or regional_map is not None:
             from .cities import CityWeather
             self.citywx = CityWeather(client, cfg.cache_dir)
+        if "travel" in cfg.display.slides:
             self.jobs.append(("travel", self.update_travel, lambda: 3600 if self.store.travel else 300))
+        if regional_map is not None:
+            regional_map.citywx = self.citywx
+            self.jobs.append(("regional_map", self.update_regional_map,
+                              lambda: 600 if self.store.regional_map else 120))
         self.next_run = {name: 0.0 for name, _, _ in self.jobs}
 
     def _warning_active(self) -> bool:
@@ -513,6 +521,17 @@ class Updater(threading.Thread):
                     self.client.icon_path(p.icon, size="medium")
         if rows:
             self.store.put("travel", rows)
+
+    def update_regional_map(self) -> None:
+        data = self.regional_map.update()
+        for c, *_ in data.cities:
+            o = data.observations.get(c.name)
+            if o:
+                self.client.icon_path(o.icon, size="medium")
+            fc = data.forecasts.get(c.name)
+            for p in (fc.periods[:4] if fc else []):
+                self.client.icon_path(p.icon, size="medium")
+        self.store.put("regional_map", data)
 
     def update_regional(self) -> None:
         radar, satellite = self.regional.update(list(self.store.regions_wanted))
