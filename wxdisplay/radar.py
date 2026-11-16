@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 
 import requests
-from PIL import Image, ImageChops, ImageDraw, ImageOps, ImageSequence
+from PIL import Image, ImageDraw, ImageOps, ImageSequence
 
 from . import geo
 from .config import ASSETS, Config
@@ -331,18 +331,20 @@ class Radar:
         return self._clean(Image.open(io.BytesIO(r.content)))
 
     def _clean(self, img: Image.Image) -> Image.Image:
-        """Hide returns weaker than min_dbz (ground clutter, clear-air echoes)."""
+        """Hide returns weaker than min_dbz (ground clutter, clear-air echoes).
+
+        Returns a one-byte-per-pixel palette image whose palette index is the dBZ
+        level, with weak levels marked transparent: a quarter of the memory of RGBA.
+        """
         img = img.convert("RGBA")
-        alpha = img.getchannel("A")
         pal = Image.new("P", (1, 1))
         pal.putpalette([c for rgb in PALETTE for c in rgb])
         idx = img.convert("RGB").quantize(palette=pal, dither=Image.Dither.NONE)
+        idx.paste(0, mask=img.getchannel("A").point(lambda a: 255 if a == 0 else 0))  # no data -> index 0
         threshold = self.cfg.radar.min_dbz
-        lut = [0] + [235 if i * 0.5 - 32.5 >= threshold else 0 for i in range(1, 256)]
-        keep = Image.frombytes("L", idx.size, idx.tobytes()).point(lut)
-        out = idx.convert("RGBA")
-        out.putalpha(ImageChops.darker(keep, alpha))
-        return out
+        idx.info["transparency"] = bytes([0] + [235 if i * 0.5 - 32.5 >= threshold else 0
+                                                for i in range(1, 256)])
+        return idx
 
     # ---------------------------------------------------------------- NWS
 
@@ -459,5 +461,8 @@ class Satellite:
             sy1 = (self.LAT0 - lat_bot) / self.RES
             mesh.append(((0, y, w, y2), (x0, sy0, x0, sy1, x1, sy1, x1, sy0)))
         out = img.transform((w, h), Image.Transform.MESH, mesh, Image.Resampling.BILINEAR)
+        # Keep it one byte per pixel: the infrared value is the palette index, the palette the look.
+        frame = Image.frombytes("P", out.size, out.tobytes())
         r, g, b = self._luts
-        return Image.merge("RGB", (out.point(r), out.point(g), out.point(b)))
+        frame.putpalette([c for rgb in zip(r, g, b) for c in rgb])
+        return frame

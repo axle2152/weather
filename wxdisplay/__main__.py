@@ -129,7 +129,12 @@ def run_display(args, cfg, client, site, first: bool):
     regional_map = None
     if "regional_map" in cfg.display.slides:
         regional_map = RegionalWeatherMap(cfg, site, theme.content.size, theme.s, ua, None)
-    updater = Updater(cfg, client, store, radar, regional, regional_map)
+    outlook = None
+    if "outlook" in cfg.display.slides:
+        from .outlook import Outlook
+        from .render.slides import OutlookSlide
+        outlook = Outlook(cfg, site, OutlookSlide.map_rects(theme)[0].size, theme.s, ua)
+    updater = Updater(cfg, client, store, radar, regional, regional_map, outlook)
 
     if args.screenshots:
         if not disclaimer.accepted():

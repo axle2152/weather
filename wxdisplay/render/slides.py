@@ -50,6 +50,9 @@ class Slide:
     def draw(self, surf: pygame.Surface, page: int, t: float) -> None:
         pass
 
+    def release(self) -> None:
+        """Called when the slide goes off screen: drop anything big that can be rebuilt."""
+
     # helpers
     def px(self, v: float) -> int:
         return self.t.px(v)
@@ -293,6 +296,9 @@ class MapLoopSlide(Slide):
     def frames_for(self, page: int):
         raise NotImplementedError
 
+    def release(self) -> None:
+        self._prepared = {}   # a loop's frames as screen images are tens of MB; rebuilt in a blink
+
     def frame_ms(self) -> int:
         return self.cfg.radar.frame_ms
 
@@ -321,7 +327,8 @@ class MapLoopSlide(Slide):
             for when, img in rf.frames:
                 if img.size != size:
                     img = img.resize(size)
-                frames.append((when, round_corners(pil_to_surface(img, alpha=img.mode == "RGBA"), r)))
+                see_through = img.mode == "RGBA" or (img.mode == "P" and "transparency" in img.info)
+                frames.append((when, round_corners(pil_to_surface(img, alpha=see_through), r)))
             prep = {
                 "rf": rf,
                 "base": round_corners(pil_to_surface(rf.basemap.resize(size)), r) if rf.basemap else None,
@@ -331,8 +338,7 @@ class MapLoopSlide(Slide):
                 "polys": None,
                 "alerts": -1,
             }
-            self._prepared = {k: v for k, v in list(self._prepared.items())[-1:]}  # keep the previous one too
-            self._prepared[id(rf)] = prep
+            self._prepared = {id(rf): prep}
         if self.polygons and prep["alerts"] != self.store.version("alerts"):
             prep["alerts"] = self.store.version("alerts")
             prep["polys"] = self._polygon_overlay(rf)
@@ -552,6 +558,67 @@ class RegionalMapSlide(Slide):
                 (c.x + px(24), c.bottom - px(18)), "bottomleft", (220, 225, 230), shadow=False, outline=True)
 
 
+# ------------------------------------------------------------- 30-day outlook
+
+class OutlookSlide(Slide):
+    key = "outlook"
+    title = "30 Day Outlook"
+
+    @staticmethod
+    def map_rects(theme) -> list:
+        """Where the two maps go: one per column, under the column title."""
+        rects = []
+        for col in theme.columns(theme.content, 2):
+            w = col.w - theme.px(48)
+            h = min(round(w * 0.56), theme.px(470))
+            rects.append(pygame.Rect(col.centerx - w // 2, col.y + theme.px(92), w, h))
+        return rects
+
+    def __init__(self, app):
+        super().__init__(app)
+        self._maps: dict = {}
+
+    def available(self):
+        return bool(self.store.outlook)
+
+    def layout(self, page):
+        return self.t.columns(self.t.content, 2)
+
+    def title_for(self, page):
+        parts = self.store.outlook or {}
+        valid = next((p.valid for p in parts.values() if p.valid), "")
+        if valid and self.t.narrow:  # "November 2026" -> "Nov 2026" so the title fits on 4:3 screens
+            month, _, year = valid.partition(" ")
+            valid = f"{month[:3]} {year}"
+        return f"30 Day Outlook: {valid}" if valid else self.title
+
+    def draw(self, surf, page, t):
+        parts = self.store.outlook or {}
+        px, tx = self.px, self.text
+        for col, rect, (kind, label) in zip(self.layout(page), self.map_rects(self.t),
+                                            (("temp", "Temperature"), ("prcp", "Precipitation"))):
+            tx.draw(surf, label, "semibold", 48, (col.centerx, col.y + px(22)), "midtop", self.t.accent)
+            part = parts.get(kind)
+            if part is None:
+                self.message(surf, "Not available", rect)
+                continue
+            if self._maps.get(kind, (None,))[0] is not part.map:
+                self._maps[kind] = (part.map, round_corners(pil_to_surface(part.map.resize(rect.size)),
+                                                            self.t.radius // 2))
+            surf.blit(self._maps[kind][1], rect)
+            hx, hy = part.view.to_px(self.store.site.lon, self.store.site.lat)
+            hx = rect.x + hx * rect.w / part.view.width
+            hy = rect.y + hy * rect.h / part.view.height
+            if rect.collidepoint(hx, hy):  # (Alaska and Hawaii are off this map)
+                pygame.draw.circle(surf, (0, 0, 0), (round(hx), round(hy)), px(10))
+                pygame.draw.circle(surf, self.t.accent, (round(hx), round(hy)), px(7))
+            box = pygame.Rect(col.x + px(30), rect.bottom + px(22), col.w - px(60), col.bottom - rect.bottom - px(30))
+            size, lines = tx.fit_block(part.words, "semibold", [44, 40, 36, 32], box, spacing=1.08)
+            y = tx.draw_lines(surf, lines[:2], "semibold", size, box, spacing=1.08, align="center")
+            if part.category != "EC":
+                tx.draw(surf, f"{part.prob}% chance", "medium", 36, (col.centerx, y + px(4)), "midtop", self.t.dim)
+
+
 # ------------------------------------------------------------- travel cities
 
 class TravelSlide(Slide):
@@ -696,4 +763,4 @@ class Bulletins(Slide):
 
 SLIDES = {cls.key: cls for cls in (Bulletins, CurrentConditions, LocalObservations, Forecast36,
                                    Extended, AlmanacSlide, RadarSlide, RegionalRadarSlide,
-                                   RegionalSatelliteSlide, RegionalMapSlide, TravelSlide)}
+                                   RegionalSatelliteSlide, RegionalMapSlide, TravelSlide, OutlookSlide)}

@@ -356,6 +356,7 @@ class DataStore:
         self.region_list: list = []         # every region the regional slides rotate through
         self.travel: list = []              # [(cities.City, Forecast)]
         self.regional_map = None            # regional.RegionalMapData
+        self.outlook = None                 # {"temp": OutlookPart, "prcp": OutlookPart}
         self.versions: dict = {}
         self.updated: dict = {}
 
@@ -377,7 +378,7 @@ class Updater(threading.Thread):
     """Refreshes the DataStore on a schedule. Network calls only ever happen here."""
 
     def __init__(self, cfg: Config, client: NWSClient, store: DataStore, radar=None, regional=None,
-                 regional_map=None):
+                 regional_map=None, outlook=None):
         super().__init__(name="updater", daemon=True)
         self.cfg, self.client, self.store, self.radar = cfg, client, store, radar
         self.regional = regional
@@ -402,6 +403,9 @@ class Updater(threading.Thread):
             self.citywx = CityWeather(client, cfg.cache_dir)
         if "travel" in cfg.display.slides:
             self.jobs.append(("travel", self.update_travel, lambda: 3600 if self.store.travel else 300))
+        self.outlook = outlook
+        if outlook is not None:
+            self.jobs.append(("outlook", self.update_outlook, lambda: 6 * 3600 if self.store.outlook else 900))
         if regional_map is not None:
             regional_map.citywx = self.citywx
             self.jobs.append(("regional_map", self.update_regional_map,
@@ -521,6 +525,11 @@ class Updater(threading.Thread):
                     self.client.icon_path(p.icon, size="medium")
         if rows:
             self.store.put("travel", rows)
+
+    def update_outlook(self) -> None:
+        parts = self.outlook.update()
+        if parts:
+            self.store.put("outlook", parts)
 
     def update_regional_map(self) -> None:
         data = self.regional_map.update()

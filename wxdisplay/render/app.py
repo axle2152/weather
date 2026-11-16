@@ -123,6 +123,11 @@ class App:
             log.debug("regional slides this pass: %s", ", ".join(self.cycle_regions))
 
     def next_slide(self, now: float) -> None:
+        if 0 <= self.pos < len(self.playlist):
+            leaving = self.playlist[self.pos][0]
+            upcoming = self.playlist[self.pos + 1][0] if self.pos + 1 < len(self.playlist) else None
+            if upcoming is not leaving:
+                leaving.release()
         self.pos += 1
         if self.pos >= len(self.playlist):
             # Move on to the next regions only once these were actually shown (not still loading).
@@ -153,7 +158,7 @@ class App:
             for r in [self.theme.header] + rects:
                 surf.blit(self.panels.get(bg, r), r)
             self.static[key] = surf
-            if len(self.static) > 16:
+            if len(self.static) > 4:  # each is a full screen image (8 MB at 1080p)
                 self.static.popitem(last=False)
         return surf
 

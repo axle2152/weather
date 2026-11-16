@@ -37,6 +37,7 @@ SLIDE_NAMES = {
     "regional_satellite": "Regional Satellite (rotates through regions)",
     "regional_map": "Regional Conditions and Forecast map",
     "travel": "Travel Cities Forecast",
+    "outlook": "30 Day Outlook",
 }
 STATION_RE = re.compile(r"^[A-Z0-9]{3,5}$")
 ZONE_RE = re.compile(r"^[A-Z]{2}[CZ]\d{3}$")

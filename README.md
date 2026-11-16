@@ -2,9 +2,10 @@
 
 A local weather display in the spirit of a cable weather channel's "local
 forecast" segment: current conditions, local observations, the 36-hour and
-extended forecasts, an almanac and a Doppler radar loop, cycling over your own
-photos with see-through "frosted glass" panels. Made to run all day and be
-streamed.
+extended forecasts, an almanac, local and regional radar, regional satellite,
+a regional conditions map, a Travel Cities forecast and the 30-day outlook,
+cycling over your own photos with see-through "frosted glass" panels. Works on
+wide (16:9) and 4:3 screens. Made to run all day and be streamed.
 
 > **⚠️ For entertainment only. Not for weather emergencies.**
 > This program has no redundancy: if the internet, the computer or the
@@ -110,6 +111,7 @@ opacity on the Display tab in settings.
 | Regional Radar | Radar for a US region (Southeast, Ohio Valley, Pacific Northwest and so on); a different region each time the slides come around, starting with yours |
 | Regional Satellite | An infrared satellite loop for the same region: bright white for high, cold cloud tops |
 | Regional Conditions / Regional Forecast | A map from your area out to the surrounding region: current temperatures and sky for about ten towns, then the day's highs and lows |
+| 30 Day Outlook | The Climate Prediction Center's outlook for the month: warmer/colder and wetter/drier than normal, on US maps with your area's odds |
 | Travel Cities Forecast | A slowly scrolling list of popular US cities with an icon, low and high (today's, or tomorrow's later in the day) |
 
 The bottom bar cycles through the current conditions. When a warning is in
@@ -123,6 +125,7 @@ Pick and order the slides with `slides = [...]` in `config.toml`.
 - **Forecasts, observations, alerts:** the [National Weather Service API](https://www.weather.gov/documentation/services-web-api) (public domain)
 - **Radar:** the [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/) NEXRAD composite, with the NWS radar loop images as a fallback
 - **Satellite:** NOAA GOES infrared imagery from the Iowa Environmental Mesonet archive
+- **30-day outlook:** NOAA [Climate Prediction Center](https://www.cpc.ncep.noaa.gov/) (public domain)
 - **Map:** [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map) shaded relief (public domain),
   [US Census Bureau](https://www.census.gov/geographies/mapping-files.html) state, county and Interstate outlines (public domain),
   and [Natural Earth](https://www.naturalearthdata.com/) for Canada and Mexico (public domain)

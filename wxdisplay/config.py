@@ -58,12 +58,12 @@ def normalize_resolution(text) -> str:
 _warned_resolutions: set = set()
 
 ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar",
-              "regional_radar", "regional_satellite", "regional_map", "travel"]
+              "regional_radar", "regional_satellite", "regional_map", "travel", "outlook"]
 
 # Settings files record the version they were written for, so slides added later can be
 # switched on in older files (which list the slides that existed back then).
 CONFIG_VERSION = 3
-NEW_SLIDES = {2: ["regional_radar", "regional_satellite"], 3: ["regional_map", "travel"]}
+NEW_SLIDES = {2: ["regional_radar", "regional_satellite"], 3: ["regional_map", "travel", "outlook"]}
 
 
 @dataclass

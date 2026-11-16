@@ -35,7 +35,7 @@ Bringing the 2020 version back to life. Checked items are done.
 - [x] Bundled open-license font (Libre Franklin), so it looks the same on every computer
 - [x] `--screenshots` mode for previewing without opening a window
 
-## 4. More slides and screens (in progress)
+## 4. More slides and screens (done)
 
 - [x] 4:3 screens (e.g. 1024x768, 1440x1080), with layouts that adapt to the shape, and a
       resolution check so a bad value can't crash the app
@@ -44,7 +44,7 @@ Bringing the 2020 version back to life. Checked items are done.
 - [x] Regional map: current conditions and the forecast for cities from your region down to
       your area, as temperatures and icons on a map
 - [x] Travel Cities: a slowly scrolling list of popular US cities with an icon, low and high
-- [ ] 30-day outlook from the Climate Prediction Center (above/below normal temperature and
+- [x] 30-day outlook from the Climate Prediction Center (above/below normal temperature and
       precipitation for your area)
 
 ## 5. Ideas (not started)
