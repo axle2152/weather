@@ -26,7 +26,7 @@ name = ""
 contact = ""
 
 [display]
-resolution = "1080p"         # "1080p", "720p", "480p", or e.g. "1600x900"
+resolution = "1080p"         # "1080p", "720p", "480p", or a size like "1024x768" (4:3 to 16:9)
 fullscreen = false
 borderless = false           # window without a title bar
 fps = 30

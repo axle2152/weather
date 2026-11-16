@@ -35,20 +35,39 @@ Bringing the 2020 version back to life. Checked items are done.
 - [x] Bundled open-license font (Libre Franklin), so it looks the same on every computer
 - [x] `--screenshots` mode for previewing without opening a window
 
-## 4. Streaming without OBS (next)
+## 4. More slides and screens (in progress)
 
-- [ ] Pipe frames straight into ffmpeg and send them to YouTube Live (RTMP)
-- [ ] Music: loop a folder of tracks (e.g. from the YouTube Audio Library) under the video
-- [ ] Mix the warning beep into the stream audio
-- [ ] Headless mode (no window) and automatic restart, for running all day
-- [ ] Stream key kept in `config.toml` (never committed)
+- [x] 4:3 screens (e.g. 1024x768, 1440x1080), with layouts that adapt to the shape, and a
+      resolution check so a bad value can't crash the app
+- [ ] Regional radar and satellite: cycle through US regions (Southeast, Midwest, Pacific
+      Northwest and so on)
+- [ ] Regional map: current conditions and the forecast for cities from your region down to
+      your area, as temperatures and icons on a map
+- [ ] Travel Cities: a slowly scrolling list of popular US cities with an icon, low and high
+- [ ] 30-day outlook from the Climate Prediction Center (above/below normal temperature and
+      precipitation for your area)
 
-## 5. Polish (later)
+## 5. Ideas (not started)
+
+- [ ] Almanac: normal and record highs and lows for today, plus yesterday's high, low and
+      rainfall (NOAA ACIS, free, no key)
+- [ ] Hourly forecast: a graph of temperature and rain chance for the next 12 to 24 hours
+- [ ] Your Weekend: a Friday-to-Sunday forecast slide
+- [ ] Severe weather outlook map (Storm Prediction Center), shown only when your area has a risk
+- [ ] Tropical outlook (National Hurricane Center), shown only during hurricane season when
+      something is brewing
+- [ ] UV index (EPA, free), during the day
+- [ ] Optional background music playlist in the app, with a separate track during bulletins
+- [ ] Windows launcher: double-click to start, optional start with Windows
+- [ ] Air quality (AirNow needs a free API key)
+
+Not planned: built-in streaming. Use OBS or similar to capture the window.
+
+## 6. Polish (later)
 
 - [ ] Replace the NWS icons (their icon service is deprecated) with a sharper open-license set
 - [ ] Pick a background photo by weather, season or time of day
 - [ ] Short transitions between slides
-- [ ] Hourly forecast or "Your Weekend" slide; air quality; regional temperature map
 - [x] Settings window (press S): separate from the display, applies changes by restarting it
 - [x] Fixed-width clock digits, so the time doesn't shift as it ticks
 - [ ] Optional metric units

@@ -57,7 +57,7 @@ settings a few seconds later. You can also open it on its own with
 | Tab | What you can change |
 | --- | --- |
 | Location | Where the forecast is for (with a **Check location** button), the name on screen, your contact email |
-| Display | Resolution, full screen, timing, background photo folder, panel color and opacity |
+| Display | Resolution (16:9 or 4:3 screens), full screen, timing, background photo folder, panel color and opacity |
 | Slides | Which slides to show and in what order |
 | Observations | The Current Conditions station; Local Observations cities picked automatically or chosen by you |
 | Radar | Radar source, zoom, map center, loop length and speed, clutter filter, map lines, extra city labels |
@@ -77,7 +77,7 @@ On Linux you may need to install your distribution's `python3-tk` package.
 | `python weather.py --settings` | Open the settings window without starting the display |
 | `python weather.py --check` | Show what it found for your location and exit |
 | `python weather.py --place "Denver, CO"` | Try another location without editing the config |
-| `python weather.py --resolution 720p` | Run at 720p (or `480p`, or e.g. `1600x900`) |
+| `python weather.py --resolution 720p` | Run at 720p (or `480p`, a 4:3 size like `1024x768`, or e.g. `1600x900`) |
 | `python weather.py --fullscreen` | Full screen |
 | `python weather.py --test-warning` | Show a test message in the red warning crawl |
 | `python weather.py --screenshots shots` | Save a picture of every slide to `shots/` and exit |

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -15,6 +16,46 @@ ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 
 RESOLUTIONS = {"1080p": (1920, 1080), "720p": (1280, 720), "480p": (854, 480)}
+# Offered in the settings window; any size between these shapes works.
+RESOLUTION_CHOICES = ["1080p", "720p", "480p",
+                      "1440x1080 (4:3)", "1024x768 (4:3)", "800x600 (4:3)", "640x480 (4:3)"]
+MIN_SIZE, MAX_SIZE = (480, 360), (3840, 2160)
+MIN_ASPECT, MAX_ASPECT = 1.25, 1.8   # 5:4 up to a little past 16:9
+
+
+def parse_resolution(text) -> tuple[int, int]:
+    """"1080p", "1024x768" or "1440 x 1080 (4:3)" -> (width, height).
+
+    Raises ValueError with a plain-English reason for anything that would not
+    display properly, so a typo can never crash the app.
+    """
+    t = re.sub(r"\(.*?\)", "", str(text)).strip().lower().replace("×", "x")
+    if t in RESOLUTIONS:
+        return RESOLUTIONS[t]
+    m = re.fullmatch(r"(\d{2,5})\s*[x*]\s*(\d{2,5})", t)
+    if not m:
+        raise ValueError(f'"{text}" isn\'t a screen size. Use 1080p, 720p, 480p, or a size like 1024x768.')
+    w, h = int(m.group(1)), int(m.group(2))
+    if not (MIN_SIZE[0] <= w <= MAX_SIZE[0] and MIN_SIZE[1] <= h <= MAX_SIZE[1]):
+        raise ValueError(f"{w}x{h} is outside the supported range "
+                         f"({MIN_SIZE[0]}x{MIN_SIZE[1]} up to {MAX_SIZE[0]}x{MAX_SIZE[1]}).")
+    aspect = w / h
+    if not MIN_ASPECT - 0.005 <= aspect <= MAX_ASPECT + 0.005:
+        shape = "wide" if aspect > MAX_ASPECT else "tall"
+        raise ValueError(f"{w}x{h} is too {shape}. Screen shapes from 4:3 (and 5:4) up to 16:9 are supported.")
+    return w, h
+
+
+def normalize_resolution(text) -> str:
+    """Canonical spelling for saving: a preset name or "WIDTHxHEIGHT"."""
+    t = re.sub(r"\(.*?\)", "", str(text)).strip().lower().replace("×", "x")
+    if t in RESOLUTIONS:
+        return t
+    w, h = parse_resolution(text)
+    return f"{w}x{h}"
+
+
+_warned_resolutions: set = set()
 
 ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar"]
 
@@ -95,14 +136,12 @@ class Config:
 
     @property
     def size(self) -> tuple[int, int]:
-        res = self.display.resolution.lower().strip()
-        if res in RESOLUTIONS:
-            return RESOLUTIONS[res]
         try:
-            w, h = (int(v) for v in res.split("x"))
-            return w, h
-        except ValueError:
-            log.warning("Unknown resolution %r, using 1080p", self.display.resolution)
+            return parse_resolution(self.display.resolution)
+        except ValueError as e:
+            if self.display.resolution not in _warned_resolutions:
+                _warned_resolutions.add(self.display.resolution)
+                log.warning("%s Using 1080p instead.", e)
             return RESOLUTIONS["1080p"]
 
     @property
@@ -236,7 +275,7 @@ name = {v(loc.name)}
 contact = {v(nws.contact)}
 
 [display]
-resolution = {v(d.resolution):<16}# "1080p", "720p", "480p", or e.g. "1600x900"
+resolution = {v(d.resolution):<16}# "1080p", "720p", "480p", or a size like "1024x768" (4:3 to 16:9)
 fullscreen = {v(d.fullscreen)}
 borderless = {v(d.borderless):<16}# window without a title bar
 fps = {v(d.fps)}

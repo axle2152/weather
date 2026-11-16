@@ -15,7 +15,8 @@ import threading
 from pathlib import Path
 
 from . import geo
-from .config import ALL_SLIDES, RESOLUTIONS, ROOT, Config, load_config, save_config
+from .config import (ALL_SLIDES, RESOLUTION_CHOICES, ROOT, Config, load_config, normalize_resolution,
+                     save_config)
 
 try:
     import tkinter as tk
@@ -166,9 +167,10 @@ class SettingsWindow:
         self.text_color = tk.StringVar(value=d.text_color)
         self.opacity = tk.DoubleVar(value=round(d.panel_opacity * 100))
 
-        self._row(f, 0, "Resolution", ttk.Combobox(f, textvariable=self.resolution, width=12,
-                                                   values=list(RESOLUTIONS)),
-                  'Or type a size like "1600x900".')
+        self._row(f, 0, "Resolution", ttk.Combobox(f, textvariable=self.resolution, width=16,
+                                                   values=RESOLUTION_CHOICES),
+                  'Pick one or type a size like "1600x900". Wide (16:9) and square-ish (4:3) '
+                  "screens both work, and anything in between.")
         checks = ttk.Frame(f)
         for text, var in (("Full screen", self.fullscreen), ("Window without a title bar", self.borderless),
                           ("24-hour clock", self.clock_24h)):
@@ -509,13 +511,10 @@ class SettingsWindow:
         cfg.nws.contact = self.contact.get().strip()
 
         d = cfg.display
-        d.resolution = self.resolution.get().strip()
-        if d.resolution.lower() not in RESOLUTIONS:
-            m = re.fullmatch(r"(\d+)\s*x\s*(\d+)", d.resolution.lower())
-            if not m or int(m.group(1)) < 640 or int(m.group(2)) < 360:
-                errors.append('Resolution should be 1080p, 720p, 480p or a size like "1600x900".')
-            else:
-                d.resolution = f"{m.group(1)}x{m.group(2)}"
+        try:
+            d.resolution = normalize_resolution(self.resolution.get())
+        except ValueError as e:
+            errors.append(f"Resolution: {e}")
         d.fullscreen, d.borderless = self.fullscreen.get(), self.borderless.get()
         d.clock_24h, d.frosted = self.clock_24h.get(), self.frosted.get()
         d.fps = number(self.fps, "Frames per second", 10, 60, int)

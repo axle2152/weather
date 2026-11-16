@@ -62,6 +62,8 @@ class App:
             flags |= pygame.FULLSCREEN | pygame.SCALED  # desktop full screen, scaled to fit the monitor
         elif cfg.display.borderless and not headless:
             flags |= pygame.NOFRAME
+        if not headless and not cfg.display.fullscreen:
+            self._check_fits_screen()
         self.screen = pygame.display.set_mode((self.theme.w, self.theme.h), flags)
         pygame.display.set_caption(f"{APP_NAME} - {store.site.name}, {store.site.state}"
                                    "      S or right-click: settings   F11: full screen   Esc: quit")
@@ -81,6 +83,16 @@ class App:
         self.fade_from = None   # (old Background, start time) during a background crossfade
         self.bg_changed = time.monotonic()
         self.time_slot = self.text.tabular_width("00:00:00 PM", "medium", 50)
+
+    def _check_fits_screen(self) -> None:
+        try:
+            dw, dh = pygame.display.get_desktop_sizes()[0]
+        except (pygame.error, IndexError):
+            return
+        if self.theme.w > dw or self.theme.h > dh:
+            log.warning("The %dx%d window is bigger than your %dx%d screen, so part of it will be cut off. "
+                        "Pick a smaller resolution in settings, or turn on full screen (it scales to fit).",
+                        self.theme.w, self.theme.h, dw, dh)
 
     # ------------------------------------------------------------ playlist
 
@@ -127,7 +139,7 @@ class App:
     def draw_header(self, surf: pygame.Surface, title: str) -> None:
         h, px = self.theme.header, self.theme.px
         now = dt.datetime.now(self.tz)
-        date = now.strftime("%B %d, %Y").replace(" 0", " ")
+        date = now.strftime("%b %d, %Y" if self.theme.narrow else "%B %d, %Y").replace(" 0", " ")
         clock = now.strftime("%H:%M:%S") if self.cfg.display.clock_24h else now.strftime("%I:%M:%S %p")
         x, cy = h.x + px(36), h.centery
         r = self.text.draw(surf, date, "medium", 50, (x, cy), "midleft")

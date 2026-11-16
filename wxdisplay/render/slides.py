@@ -70,7 +70,7 @@ class CurrentConditions(Slide):
 
     def layout(self, page):
         c, gap = self.t.content, self.t.gap
-        lw = self.px(700)
+        lw = self.t.cx(700)
         return [pygame.Rect(c.x, c.y, lw, c.h), pygame.Rect(c.x + lw + gap, c.y, c.w - lw - gap, c.h)]
 
     def draw(self, surf, page, t):
@@ -131,8 +131,9 @@ class LocalObservations(Slide):
     def draw(self, surf, page, t):
         c, px, tx = self.t.content, self.px, self.text
         rows = self.store.observations[page * self.ROWS:(page + 1) * self.ROWS]
-        cols = {"city": c.x + px(44), "icon": c.x + px(560), "temp": c.x + px(790),
-                "wx": c.x + px(850), "wind": c.x + px(1440)}
+        cx = self.t.cx
+        cols = {"city": c.x + cx(44), "icon": c.x + cx(560), "temp": c.x + cx(790),
+                "wx": c.x + cx(850), "wind": c.x + cx(1440)}
         hy = c.y + px(30)
         for key, label, anchor in (("city", "City", "topleft"), ("temp", "Temp", "topright"),
                                    ("wx", "Weather", "topleft"), ("wind", "Wind", "topleft")):
@@ -141,7 +142,7 @@ class LocalObservations(Slide):
         rh = (c.bottom - px(26) - top) / self.ROWS
         for i, (station, o) in enumerate(rows):
             cy = top + rh * (i + 0.5)
-            tx.draw(surf, tx.ellipsize(station.name, "semibold", 46, px(480)), "semibold", 46,
+            tx.draw(surf, tx.ellipsize(station.name, "semibold", 46, cx(480)), "semibold", 46,
                     (cols["city"], cy), "midleft")
             if o is None:
                 tx.draw(surf, "No Report", "medium", 44, (cols["wx"], cy), "midleft", self.t.dim)
@@ -151,7 +152,7 @@ class LocalObservations(Slide):
                 surf.blit(icon, icon.get_rect(center=(cols["icon"] + px(40), cy)))
             tx.draw(surf, f"{o.temp_f}°" if o.temp_f is not None else "--", "semibold", 48,
                     (cols["temp"], cy), "midright")
-            tx.draw(surf, tx.ellipsize(o.text or "--", "medium", 42, px(560)), "medium", 42,
+            tx.draw(surf, tx.ellipsize(o.text or "--", "medium", 42, cx(560)), "medium", 42,
                     (cols["wx"], cy), "midleft")
             wind = "Calm" if o.wind_mph == 0 else (
                 f"{o.wind_dir or ''} {o.wind_mph}".strip() if o.wind_mph is not None else "--")
@@ -244,20 +245,25 @@ class AlmanacSlide(Slide):
     def draw(self, surf, page, t):
         top, bottom = self.layout(page)
         px, tx, a = self.px, self.text, self.store.almanac
-        cols = [top.x + px(1010), top.x + px(1520)]
+        cols = [top.x + self.t.cx(1010), top.x + self.t.cx(1520)]
         for x, day in zip(cols, a.days):
-            tx.draw(surf, day.label, "semibold", 48, (x, top.y + px(24)), "midtop", self.t.accent)
-            sub = day.date.strftime("%b %d").replace(" 0", " ")
-            if day.daylight:
-                h, m = divmod(round(day.daylight.total_seconds() / 60), 60)
-                sub += f"  ·  {h}h {m}m daylight"
-            tx.draw(surf, sub, "medium", 32, (x, top.y + px(82)), "midtop", self.t.dim)
-        rows = [("Twilight Begins", "dawn"), ("Sunrise", "sunrise"), ("Sunset", "sunset"), ("Twilight Ends", "dusk")]
-        for i, (label, attr) in enumerate(rows):
-            cy = top.y + px(160) + i * px(56)
-            tx.draw(surf, label, "medium", 44, (top.x + px(70), cy), "midleft", self.t.dim)
+            tx.draw(surf, day.label, "semibold", 48, (x, top.y + px(20)), "midtop", self.t.accent)
+            tx.draw(surf, day.date.strftime("%a %b %d").replace(" 0", " "), "medium", 32,
+                    (x, top.y + px(76)), "midtop", self.t.dim)
+
+        def daylight(day):
+            if not day.daylight:
+                return "--"
+            h, m = divmod(round(day.daylight.total_seconds() / 60), 60)
+            return f"{h}h {m}m"
+        rows = [("Twilight Begins", lambda d: self.time(d.dawn)), ("Sunrise", lambda d: self.time(d.sunrise)),
+                ("Sunset", lambda d: self.time(d.sunset)), ("Twilight Ends", lambda d: self.time(d.dusk)),
+                ("Daylight", daylight)]
+        for i, (label, value) in enumerate(rows):
+            cy = top.y + px(150) + i * px(48)
+            tx.draw(surf, label, "medium", 42, (top.x + px(70), cy), "midleft", self.t.dim)
             for x, day in zip(cols, a.days):
-                tx.draw(surf, self.time(getattr(day, attr)), "semibold", 46, (x, cy), "center")
+                tx.draw(surf, value(day), "semibold", 44, (x, cy), "center")
 
         mcols = self.t.columns(pygame.Rect(bottom.x + px(40), bottom.y, bottom.w - px(80), bottom.h), 4)
         for col, moon in zip(mcols, a.moons):

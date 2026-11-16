@@ -20,6 +20,13 @@ class Theme:
         self.cfg = cfg
         self.w, self.h = cfg.size
         self.s = self.h / 1080.0
+        # Layouts are designed 1080 units tall. The design width follows the screen's shape:
+        # 1920 for 16:9, 1440 for 4:3. `xs` scales horizontal positions that were laid out
+        # for the 16:9 content width (1824), so the same slide code fits both.
+        self.dw = self.w / self.s
+        self.narrow = self.dw < 1700
+        content_w = self.dw - 96
+        self.xs = content_w / 1824
         self.panel = hex_rgb(cfg.display.panel_color)
         self.opacity = cfg.display.panel_opacity
         self.text = hex_rgb(cfg.display.text_color)
@@ -33,13 +40,17 @@ class Theme:
         self._fonts: dict = {}
 
         # Layout (1080p units, scaled): header bar, main content area, lower ticker bar.
-        self.header = self.rect(48, 30, 1824, 90)
-        self.content = self.rect(48, 146, 1824, 762)
-        self.lower = self.rect(48, 934, 1824, 96)
+        self.header = self.rect(48, 30, content_w, 90)
+        self.content = self.rect(48, 146, content_w, 762)
+        self.lower = self.rect(48, 934, content_w, 96)
         self.gap = self.px(28)
 
     def px(self, v: float) -> int:
         return int(round(v * self.s))
+
+    def cx(self, v: float) -> int:
+        """A horizontal distance laid out for 16:9, scaled to this screen's width."""
+        return int(round(v * self.xs * self.s))
 
     def rect(self, x, y, w, h) -> pygame.Rect:
         x0, y0 = self.px(x), self.px(y)
