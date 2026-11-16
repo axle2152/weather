@@ -57,7 +57,13 @@ def normalize_resolution(text) -> str:
 
 _warned_resolutions: set = set()
 
-ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar"]
+ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar",
+              "regional_radar", "regional_satellite"]
+
+# Settings files record the version they were written for, so slides added later can be
+# switched on in older files (which list the slides that existed back then).
+CONFIG_VERSION = 2
+NEW_SLIDES = {2: ["regional_radar", "regional_satellite"]}
 
 
 @dataclass
@@ -111,6 +117,15 @@ class RadarConfig:
 
 
 @dataclass
+class RegionalConfig:
+    regions: list = field(default_factory=list)  # region names to rotate through; empty = all, yours first
+    per_cycle: int = 1           # regions shown each time the slides come around
+    radar_frames: int = 8        # five minutes apart
+    satellite_frames: int = 8    # fifteen minutes apart
+    frame_ms: int = 220
+
+
+@dataclass
 class AlertsConfig:
     radius_miles: float = 40     # storm-based warnings within this distance count as local
     beep: bool = True
@@ -125,6 +140,7 @@ class Config:
     display: DisplayConfig = field(default_factory=DisplayConfig)
     observations: ObservationsConfig = field(default_factory=ObservationsConfig)
     radar: RadarConfig = field(default_factory=RadarConfig)
+    regional: RegionalConfig = field(default_factory=RegionalConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
     path: Path | None = None
 
@@ -185,14 +201,30 @@ def load_config(path: str | Path | None = None) -> Config:
         display=_fill(DisplayConfig, data.get("display"), "display"),
         observations=_fill(ObservationsConfig, data.get("observations"), "observations"),
         radar=_fill(RadarConfig, data.get("radar"), "radar"),
+        regional=_fill(RegionalConfig, data.get("regional"), "regional"),
         alerts=_fill(AlertsConfig, data.get("alerts"), "alerts"),
         path=path,
     )
+    version = data.get("config_version", 1)
+    if "slides" in (data.get("display") or {}):
+        for v in range(int(version) + 1, CONFIG_VERSION + 1):
+            for key in NEW_SLIDES.get(v, []):
+                if key not in cfg.display.slides:
+                    cfg.display.slides.append(key)
+                    log.info("config: added the new %s slide (turn it off in settings if you don't want it)", key)
     unknown = [s for s in cfg.display.slides if s not in ALL_SLIDES]
     if unknown:
         log.warning("config: unknown slides %s (choices: %s)", unknown, ", ".join(ALL_SLIDES))
         cfg.display.slides = [s for s in cfg.display.slides if s in ALL_SLIDES]
     cfg.radar.frames = max(1, min(12, int(cfg.radar.frames)))
+    cfg.regional.radar_frames = max(1, min(12, int(cfg.regional.radar_frames)))
+    cfg.regional.satellite_frames = max(1, min(16, int(cfg.regional.satellite_frames)))
+    cfg.regional.per_cycle = max(1, min(6, int(cfg.regional.per_cycle)))
+    from .regions import REGIONS  # here to avoid a circular import
+    bad = [r for r in cfg.regional.regions if r not in REGIONS]
+    if bad:
+        log.warning("config: unknown regions %s (choices: %s)", bad, ", ".join(REGIONS))
+        cfg.regional.regions = [r for r in cfg.regional.regions if r in REGIONS]
     cfg.display.panel_opacity = max(0.0, min(1.0, cfg.display.panel_opacity))
     return cfg
 
@@ -232,6 +264,8 @@ def render_config(cfg: Config, example: bool = False) -> str:
     """The settings as a commented TOML file (the same layout as config.example.toml)."""
     v = _toml_value
     loc, nws, d, o, r, a = cfg.location, cfg.nws, cfg.display, cfg.observations, cfg.radar, cfg.alerts
+    rg = cfg.regional
+    from .regions import REGIONS
     if example:
         intro = """\
 # Weather display settings.
@@ -257,6 +291,9 @@ def render_config(cfg: Config, example: bool = False) -> str:
 #
 # This display is for entertainment only and must not be relied on for weather
 # warnings or used to alert the public. See DISCLAIMER.md.
+
+# Lets newer versions of the app switch on slides added since this file was written.
+config_version = {CONFIG_VERSION}
 
 [location]
 # Where the forecast is for. Any of these work:
@@ -312,6 +349,16 @@ min_dbz = {v(r.min_dbz):<19}# hide echoes weaker than this (ground clutter, bugs
 counties = {v(r.counties)}
 interstates = {v(r.interstates)}
 labels = {v(r.labels):<20}# extra cities to label, e.g. ["Peachtree City, GA"]
+
+[regional]
+# Regional radar and satellite rotate through these regions, a few each time the
+# slides come around. Leave empty for all of them, starting with yours.
+# Choices: {", ".join(REGIONS)}
+regions = {v(rg.regions)}
+per_cycle = {v(rg.per_cycle):<17}# regions shown each time the slides come around
+radar_frames = {v(rg.radar_frames):<14}# 1-12 frames, five minutes apart
+satellite_frames = {v(rg.satellite_frames):<10}# 1-16 frames, fifteen minutes apart
+frame_ms = {v(rg.frame_ms):<18}# time per frame
 
 [alerts]
 radius_miles = {v(a.radius_miles):<14}# storm warnings within this distance count as local

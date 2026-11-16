@@ -114,15 +114,19 @@ def run_display(args, cfg, client, site, first: bool):
     log = logging.getLogger(APP_NAME)
     from .data import DataStore, Updater
     from .radar import Radar
+    from .regional import RegionalMaps
     from .render.app import QUIT, RELOAD, App
     from .render.theme import Theme
 
     store = DataStore(site)
-    radar = None
-    if "radar" in cfg.display.slides:
-        theme = Theme(cfg)
-        radar = Radar(cfg, site, theme.content.size, theme.s, client.session.headers["User-Agent"])
-    updater = Updater(cfg, client, store, radar)
+    theme = Theme(cfg)
+    ua = client.session.headers["User-Agent"]
+    radar = Radar(cfg, site, theme.content.size, theme.s, ua) if "radar" in cfg.display.slides else None
+    regional = None
+    if {"regional_radar", "regional_satellite"} & set(cfg.display.slides):
+        regional = RegionalMaps(cfg, site, theme.content.size, theme.s, ua)
+        store.region_list = regional.regions
+    updater = Updater(cfg, client, store, radar, regional)
 
     if args.screenshots:
         if not disclaimer.accepted():

@@ -61,6 +61,7 @@ settings a few seconds later. You can also open it on its own with
 | Slides | Which slides to show and in what order |
 | Observations | The Current Conditions station; Local Observations cities picked automatically or chosen by you |
 | Radar | Radar source, zoom, map center, loop length and speed, clutter filter, map lines, extra city labels |
+| Regional | Which US regions the regional radar and satellite rotate through, how many per pass, loop lengths |
 | Alerts | How far away storm warnings count, the beep, a test warning, extra NWS zones to watch |
 
 Settings are saved in `config.toml` (which git ignores, so your contact info
@@ -105,6 +106,8 @@ opacity on the Display tab in settings.
 | The Extended Forecast | Four days of highs, lows, sky and wind |
 | Almanac | Sunrise, sunset, twilight, daylight length and the next four moon phases |
 | Doppler Radar | An animated loop over a map of your area, with warning boxes drawn on it |
+| Regional Radar | Radar for a US region (Southeast, Ohio Valley, Pacific Northwest and so on); a different region each time the slides come around, starting with yours |
+| Regional Satellite | An infrared satellite loop for the same region: bright white for high, cold cloud tops |
 
 The bottom bar cycles through the current conditions. When a warning is in
 effect for your area, it turns red and crawls the warning text, with a beep
@@ -116,6 +119,7 @@ Pick and order the slides with `slides = [...]` in `config.toml`.
 
 - **Forecasts, observations, alerts:** the [National Weather Service API](https://www.weather.gov/documentation/services-web-api) (public domain)
 - **Radar:** the [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/) NEXRAD composite, with the NWS radar loop images as a fallback
+- **Satellite:** NOAA GOES infrared imagery from the Iowa Environmental Mesonet archive
 - **Map:** [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map) shaded relief (public domain),
   [US Census Bureau](https://www.census.gov/geographies/mapping-files.html) state, county and Interstate outlines (public domain),
   and [Natural Earth](https://www.naturalearthdata.com/) for Canada and Mexico (public domain)

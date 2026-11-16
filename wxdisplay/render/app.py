@@ -19,7 +19,7 @@ from ..config import ROOT, Config, config_path, load_config
 from ..data import DataStore
 from .audio import Beeper
 from .disclaimer_screen import DisclaimerScreen
-from .slides import SLIDES, RadarSlide
+from .slides import SLIDES, MapLoopSlide
 from .theme import Theme
 from .ticker import LowerBar
 from .widgets import Backgrounds, Icons, Panels, Text
@@ -74,6 +74,9 @@ class App:
         self.icons = Icons(self.theme, client)
         self.backgrounds = Backgrounds(self.theme, cfg.background_dir, cfg.display.frosted)
         self.beeper = Beeper(cfg.alerts.beep and not headless)
+        self.region_cycle = 0
+        self.cycle_regions: list = []
+        self._set_region_cycle(0)
         self.slides = {key: cls(self) for key, cls in SLIDES.items()}
         self.lower = LowerBar(self)
         self.static: OrderedDict = OrderedDict()
@@ -104,9 +107,27 @@ class App:
                 items += [(slide, page) for page in range(slide.pages())]
         return items or [(self.slides["current"], 0)]
 
+    def _regions_for(self, cycle: int) -> list:
+        regions = self.store.region_list
+        if not regions:
+            return []
+        per = min(self.cfg.regional.per_cycle, len(regions))
+        return list(dict.fromkeys(regions[(cycle * per + i) % len(regions)] for i in range(per)))
+
+    def _set_region_cycle(self, cycle: int) -> None:
+        """Pick this pass's regions, and tell the updater to fetch them and the next pass's."""
+        self.region_cycle = cycle
+        self.cycle_regions = self._regions_for(cycle)
+        self.store.regions_wanted = list(dict.fromkeys(self.cycle_regions + self._regions_for(cycle + 1)))
+        if self.cycle_regions:
+            log.debug("regional slides this pass: %s", ", ".join(self.cycle_regions))
+
     def next_slide(self, now: float) -> None:
         self.pos += 1
         if self.pos >= len(self.playlist):
+            # Move on to the next regions only once these were actually shown (not still loading).
+            if any(getattr(slide, "kind", "") for slide, _ in self.playlist):
+                self._set_region_cycle(self.region_cycle + 1)
             self.playlist = self.build_playlist()
             self.pos = 0
             if self.cfg.display.background_seconds <= 0:
@@ -271,9 +292,8 @@ class App:
         for i, (slide, page) in enumerate(self.playlist):
             self.slide_start = base
             t = 2.0
-            if isinstance(slide, RadarSlide):
-                slide._prepare()
-                t = slide.loop_seconds() - 0.1  # newest frame
+            if isinstance(slide, MapLoopSlide):
+                t = slide.loop_seconds(page) - 0.1  # newest frame
             self.lower.crawl_x = None
             self.lower.last = None
             self.draw_frame(self.screen, base + t, slide, page)

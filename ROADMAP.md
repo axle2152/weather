@@ -39,7 +39,7 @@ Bringing the 2020 version back to life. Checked items are done.
 
 - [x] 4:3 screens (e.g. 1024x768, 1440x1080), with layouts that adapt to the shape, and a
       resolution check so a bad value can't crash the app
-- [ ] Regional radar and satellite: cycle through US regions (Southeast, Midwest, Pacific
+- [x] Regional radar and satellite: cycle through US regions (Southeast, Midwest, Pacific
       Northwest and so on)
 - [ ] Regional map: current conditions and the forecast for cities from your region down to
       your area, as temperatures and icons on a map

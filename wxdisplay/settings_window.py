@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 
 from . import geo
+from .regions import REGIONS, default_regions
 from .config import (ALL_SLIDES, RESOLUTION_CHOICES, ROOT, Config, load_config, normalize_resolution,
                      save_config)
 
@@ -32,6 +33,8 @@ SLIDE_NAMES = {
     "extended": "The Extended Forecast",
     "almanac": "Almanac",
     "radar": "Doppler Radar",
+    "regional_radar": "Regional Radar (rotates through regions)",
+    "regional_satellite": "Regional Satellite (rotates through regions)",
 }
 STATION_RE = re.compile(r"^[A-Z0-9]{3,5}$")
 ZONE_RE = re.compile(r"^[A-Z]{2}[CZ]\d{3}$")
@@ -55,6 +58,7 @@ class SettingsWindow:
         self._slides_tab()
         self._observations_tab()
         self._radar_tab()
+        self._regional_tab()
         self._alerts_tab()
 
         bar = ttk.Frame(outer, padding=(0, PAD, 0, 0))
@@ -323,6 +327,89 @@ class SettingsWindow:
         self._row(f, 11, "Extra city labels", self.labels_text,
                   'One per line, like "Peachtree City, GA". Big cities are labeled automatically.')
 
+    def _regional_tab(self) -> None:
+        f = self._tab("Regional")
+        rg = self.cfg.regional
+        self.region_mode = tk.StringVar(value="custom" if rg.regions else "auto")
+        self.per_cycle = tk.StringVar(value=str(rg.per_cycle))
+        self.reg_radar_frames = tk.StringVar(value=str(rg.radar_frames))
+        self.reg_sat_frames = tk.StringVar(value=str(rg.satellite_frames))
+        self.reg_frame_ms = tk.StringVar(value=str(rg.frame_ms))
+        ttk.Label(f, text="Regional Radar and Regional Satellite show a different region each time the "
+                          "slides come around.", wraplength=600).grid(row=0, column=0, columnspan=2, sticky="w")
+        modes = ttk.Frame(f)
+        modes.grid(row=1, column=0, columnspan=2, sticky="w", pady=(PAD, 0))
+        ttk.Radiobutton(modes, text="All regions, starting with mine", value="auto", variable=self.region_mode,
+                        command=self._region_mode_changed).pack(anchor="w")
+        ttk.Radiobutton(modes, text="Only these regions, in this order:", value="custom",
+                        variable=self.region_mode, command=self._region_mode_changed).pack(anchor="w")
+        box = ttk.Frame(f, padding=(24, 4, 0, 0))
+        box.grid(row=2, column=0, columnspan=2, sticky="w")
+        self.region_list = ttk.Treeview(box, columns=("name", "shown"), show="headings", selectmode="browse",
+                                        height=min(len(REGIONS), 9))
+        self.region_list.heading("name", text="Region")
+        self.region_list.heading("shown", text="Shown")
+        self.region_list.column("name", width=220)
+        self.region_list.column("shown", width=70, anchor="center")
+        self.region_list.tag_configure("hidden", foreground="#888888")
+        self.region_list.grid(row=0, column=0, sticky="nw")
+        self.region_list.bind("<Double-Button-1>", lambda e: self.toggle_region())
+        try:
+            place = geo.lookup_place(self.cfg.location.place)
+            order = default_regions(place.lat, place.lon)
+        except LookupError:
+            order = list(REGIONS)
+        chosen = [r for r in rg.regions if r in REGIONS]
+        self.region_order = [(r, True) for r in chosen] + [(r, not chosen) for r in order if r not in chosen]
+        side = ttk.Frame(box, padding=(PAD, 0, 0, 0))
+        side.grid(row=0, column=1, sticky="nw")
+        self.region_buttons = [
+            ttk.Button(side, text="Show / hide", command=self.toggle_region),
+            ttk.Button(side, text="Move up", command=lambda: self.move_region(-1)),
+            ttk.Button(side, text="Move down", command=lambda: self.move_region(1)),
+        ]
+        for b in self.region_buttons:
+            b.pack(fill="x", pady=(0, 4))
+        self._refresh_regions()
+        self._row(f, 3, "Regions each time", self._spin(f, self.per_cycle, 1, 6),
+                  "How many regions to show each time the slides come around.")
+        self._row(f, 5, "Radar frames", self._spin(f, self.reg_radar_frames, 1, 12), "Five minutes apart.")
+        self._row(f, 7, "Satellite frames", self._spin(f, self.reg_sat_frames, 1, 16), "Fifteen minutes apart.")
+        self._row(f, 9, "Time per frame (ms)", self._spin(f, self.reg_frame_ms, 50, 2000, 50))
+        self._region_mode_changed()
+
+    def _refresh_regions(self, select: int | None = None) -> None:
+        self.region_list.delete(*self.region_list.get_children())
+        for i, (name, on) in enumerate(self.region_order):
+            self.region_list.insert("", "end", iid=str(i), values=(name, "Yes" if on else "No"),
+                                    tags=() if on else ("hidden",))
+        if select is not None:
+            self.region_list.selection_set(str(select))
+            self.region_list.see(str(select))
+
+    def _selected_region(self) -> int | None:
+        sel = self.region_list.selection()
+        return int(sel[0]) if sel else None
+
+    def toggle_region(self) -> None:
+        i = self._selected_region()
+        if i is not None and self.region_mode.get() == "custom":
+            name, on = self.region_order[i]
+            self.region_order[i] = (name, not on)
+            self._refresh_regions(i)
+
+    def move_region(self, step: int) -> None:
+        i = self._selected_region()
+        if i is None or not 0 <= i + step < len(self.region_order):
+            return
+        self.region_order[i], self.region_order[i + step] = self.region_order[i + step], self.region_order[i]
+        self._refresh_regions(i + step)
+
+    def _region_mode_changed(self) -> None:
+        custom = self.region_mode.get() == "custom"
+        for b in self.region_buttons:
+            b.configure(state="normal" if custom else "disabled")
+
     def _alerts_tab(self) -> None:
         f = self._tab("Alerts")
         a = self.cfg.alerts
@@ -482,7 +569,7 @@ class SettingsWindow:
         names = [n for n, v in vars(self).items() if isinstance(v, tk.Variable)]
         values = tuple((n, getattr(self, n).get()) for n in sorted(names) if n not in ("new_id", "new_name"))
         return values + (tuple(self.slide_order), tuple(self._stations().items()),
-                         self.labels_text.get("1.0", "end").strip())
+                         self.labels_text.get("1.0", "end").strip(), tuple(self.region_order))
 
     def collect(self) -> tuple[Config | None, list]:
         """Build a Config from the form. Returns (config, errors)."""
@@ -554,6 +641,15 @@ class SettingsWindow:
         r.labels = [line.strip() for line in self.labels_text.get("1.0", "end").splitlines() if line.strip()]
         for label in r.labels:
             place_ok(label, "Radar label")
+
+        rg = cfg.regional
+        rg.regions = [n for n, on in self.region_order if on] if self.region_mode.get() == "custom" else []
+        if self.region_mode.get() == "custom" and not rg.regions:
+            errors.append("Show at least one region on the Regional tab, or choose all regions.")
+        rg.per_cycle = number(self.per_cycle, "Regions each time", 1, 6, int)
+        rg.radar_frames = number(self.reg_radar_frames, "Regional radar frames", 1, 12, int)
+        rg.satellite_frames = number(self.reg_sat_frames, "Regional satellite frames", 1, 16, int)
+        rg.frame_ms = number(self.reg_frame_ms, "Regional time per frame", 50, 2000, int)
 
         a = cfg.alerts
         a.radius_miles = number(self.alert_radius, "Storm warnings within", 5, 200)

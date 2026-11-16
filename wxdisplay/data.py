@@ -350,6 +350,10 @@ class DataStore:
         self.alerts: list = []
         self.almanac: Almanac | None = None
         self.radar = None                   # radar.RadarFrames
+        self.regional_radar: dict = {}      # region name -> RadarFrames
+        self.regional_satellite: dict = {}  # region name -> RadarFrames
+        self.regions_wanted: list = []      # set by the renderer: regions shown now and next
+        self.region_list: list = []         # every region the regional slides rotate through
         self.versions: dict = {}
         self.updated: dict = {}
 
@@ -370,9 +374,10 @@ class DataStore:
 class Updater(threading.Thread):
     """Refreshes the DataStore on a schedule. Network calls only ever happen here."""
 
-    def __init__(self, cfg: Config, client: NWSClient, store: DataStore, radar=None):
+    def __init__(self, cfg: Config, client: NWSClient, store: DataStore, radar=None, regional=None):
         super().__init__(name="updater", daemon=True)
         self.cfg, self.client, self.store, self.radar = cfg, client, store, radar
+        self.regional = regional
         self.site = store.site
         self.stop_event = threading.Event()
         self.alert_states = self._alert_states()
@@ -385,6 +390,8 @@ class Updater(threading.Thread):
         ]
         if radar is not None:
             self.jobs.append(("radar", self.update_radar, lambda: 120))
+        if regional is not None:
+            self.jobs.append(("regional", self.update_regional, lambda: 60))
         self.next_run = {name: 0.0 for name, _, _ in self.jobs}
 
     def _warning_active(self) -> bool:
@@ -412,8 +419,12 @@ class Updater(threading.Thread):
             log.exception("updating %s failed", name)
 
     def run(self) -> None:
+        last_wanted = None
         while not self.stop_event.is_set():
             now = time.time()
+            if self.regional is not None and self.store.regions_wanted != last_wanted:
+                last_wanted = list(self.store.regions_wanted)
+                self.next_run["regional"] = 0  # new regions coming up: fetch them now
             for name, fn, interval in self.jobs:
                 if now >= self.next_run[name]:
                     self._run(name, fn)
@@ -479,3 +490,10 @@ class Updater(threading.Thread):
         frames = self.radar.update()
         if frames is not None:
             self.store.put("radar", frames)
+
+    def update_regional(self) -> None:
+        radar, satellite = self.regional.update(list(self.store.regions_wanted))
+        if radar is not None:
+            self.store.put("regional_radar", radar)
+        if satellite is not None:
+            self.store.put("regional_satellite", satellite)

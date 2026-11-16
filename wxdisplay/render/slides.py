@@ -276,49 +276,67 @@ class AlmanacSlide(Slide):
 
 # --------------------------------------------------------------------- radar
 
-class RadarSlide(Slide):
-    key = "radar"
-    title = "Doppler Radar"
+class MapLoopSlide(Slide):
+    """An animated loop over a map: local radar, regional radar, regional satellite."""
+
     LOOPS = 3
-    HOLD = 1.6  # seconds to pause on the newest frame
+    HOLD = 1.6        # seconds to pause on the newest frame
+    polygons = True   # draw warning boxes
+    loading = "Radar is loading…"
 
     def __init__(self, app):
         super().__init__(app)
-        self.version = -1
-        self.alert_version = -1
-        self.base = None
-        self.frames: list = []
-        self.labels = None
-        self.polys = None
+        self._prepared: dict = {}     # id(RadarFrames) -> surfaces (only the last couple kept)
+        self._alert_version = -1
+
+    # subclasses say where their frames come from
+    def frames_for(self, page: int):
+        raise NotImplementedError
+
+    def frame_ms(self) -> int:
+        return self.cfg.radar.frame_ms
 
     def available(self):
-        rf = self.store.radar
+        return any(self._ready(self.frames_for(p)) for p in range(self.pages()))
+
+    @staticmethod
+    def _ready(rf) -> bool:
         return rf is not None and bool(rf.frames)
 
-    def loop_seconds(self) -> float:
-        return len(self.frames or self.store.radar.frames) * self.cfg.radar.frame_ms / 1000 + self.HOLD
+    def loop_seconds(self, page: int = 0) -> float:
+        rf = self.frames_for(page)
+        n = len(rf.frames) if self._ready(rf) else 1
+        return n * self.frame_ms() / 1000 + self.HOLD
 
     def duration(self, page):
-        return max(self.cfg.display.slide_seconds, self.LOOPS * self.loop_seconds()) if self.available() \
-            else self.cfg.display.slide_seconds
+        if not self._ready(self.frames_for(page)):
+            return self.cfg.display.slide_seconds
+        return max(self.cfg.display.slide_seconds, self.LOOPS * self.loop_seconds(page))
 
-    def _prepare(self):
-        rf = self.store.radar
-        size = self.t.content.size
-        r = self.t.radius
-        if self.store.version("radar") != self.version:
-            self.version = self.store.version("radar")
-            self.base = round_corners(pil_to_surface(rf.basemap.resize(size)), r) if rf.basemap else None
-            self.frames = []
+    def _prepare(self, rf) -> dict:
+        size, r = self.t.content.size, self.t.radius
+        prep = self._prepared.get(id(rf))
+        if prep is None or prep["rf"] is not rf:
+            frames = []
             for when, img in rf.frames:
                 if img.size != size:
                     img = img.resize(size)
-                self.frames.append((when, round_corners(pil_to_surface(img, alpha=True), r)))
-            self.labels = self._labels_overlay(rf)
-            self.alert_version = -1
-        if self.store.version("alerts") != self.alert_version:
-            self.alert_version = self.store.version("alerts")
-            self.polys = self._polygon_overlay(rf)
+                frames.append((when, round_corners(pil_to_surface(img, alpha=img.mode == "RGBA"), r)))
+            prep = {
+                "rf": rf,
+                "base": round_corners(pil_to_surface(rf.basemap.resize(size)), r) if rf.basemap else None,
+                "frames": frames,
+                "overlay": pil_to_surface(rf.overlay.resize(size), alpha=True) if rf.overlay else None,
+                "labels": self._labels_overlay(rf),
+                "polys": None,
+                "alerts": -1,
+            }
+            self._prepared = {k: v for k, v in list(self._prepared.items())[-1:]}  # keep the previous one too
+            self._prepared[id(rf)] = prep
+        if self.polygons and prep["alerts"] != self.store.version("alerts"):
+            prep["alerts"] = self.store.version("alerts")
+            prep["polys"] = self._polygon_overlay(rf)
+        return prep
 
     def _labels_overlay(self, rf):
         if not rf.labels or rf.view is None:
@@ -350,48 +368,108 @@ class RadarSlide(Slide):
                 drew = True
         return over if drew else None
 
-    def frame_index(self, t: float) -> int:
-        n = len(self.frames)
-        step = self.cfg.radar.frame_ms / 1000
-        pos = t % self.loop_seconds()
+    def frame_index(self, t: float, n: int, page: int) -> int:
+        step = self.frame_ms() / 1000
+        pos = t % self.loop_seconds(page)
         return min(n - 1, int(pos / step))
+
+    def draw_legend(self, surf, rf) -> None:
+        if rf.source != "iem":
+            return
+        c, px, tx = self.t.content, self.px, self.text
+        steps = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+        bw, bh = px(30), px(20)
+        lw = len(steps) * bw
+        x0 = c.right - px(30) - lw - px(90)
+        y0 = c.bottom - px(48)
+        box = pygame.Rect(x0 - px(100), y0 - px(14), lw + px(210), bh + px(28))
+        pygame.draw.rect(surf, (0, 18, 36), box, border_radius=px(8))
+        tx.draw(surf, "Light", "medium", 26, (x0 - px(12), y0 + bh / 2), "midright", shadow=False)
+        for i, dbz in enumerate(steps):
+            pygame.draw.rect(surf, dbz_color(dbz), (x0 + i * bw, y0, bw, bh))
+        tx.draw(surf, "Heavy", "medium", 26, (x0 + lw + px(12), y0 + bh / 2), "midleft", shadow=False)
 
     def draw(self, surf, page, t):
         c = self.t.content
-        if not self.available():
-            self.message(surf, "Radar is loading…" if "radar" not in self.store.updated else "Radar not available")
+        rf = self.frames_for(page)
+        if not self._ready(rf):
+            self.message(surf, self.loading)
             return
-        self._prepare()
-        if self.base:
-            surf.blit(self.base, c)
-        when, frame = self.frames[self.frame_index(t)]
+        prep = self._prepare(rf)
+        if prep["base"]:
+            surf.blit(prep["base"], c)
+        when, frame = prep["frames"][self.frame_index(t, len(prep["frames"]), page)]
         surf.blit(frame, c)
-        if self.polys:
-            surf.blit(self.polys, c)
-        if self.labels:
-            surf.blit(self.labels, c)
+        for layer in ("overlay", "polys", "labels"):
+            if prep[layer]:
+                surf.blit(prep[layer], c)
         px, tx = self.px, self.text
-        # time badge
         label = self.time(when) if when else "Latest"
         badge = pygame.Rect(c.x + px(22), c.y + px(22), px(250), px(66))
         pygame.draw.rect(surf, (0, 18, 36), badge, border_radius=px(10))
         pygame.draw.rect(surf, (255, 255, 255), badge, width=max(1, px(2)), border_radius=px(10))
         tx.draw_tabular(surf, label, "semibold", 40, badge.center, "center", shadow=False)
-        # legend
-        if self.store.radar.source == "iem":
-            steps = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
-            bw, bh = px(30), px(20)
-            lw = len(steps) * bw
-            x0 = c.right - px(30) - lw - px(90)
-            y0 = c.bottom - px(48)
-            box = pygame.Rect(x0 - px(100), y0 - px(14), lw + px(210), bh + px(28))
-            pygame.draw.rect(surf, (0, 18, 36), box, border_radius=px(8))
-            tx.draw(surf, "Light", "medium", 26, (x0 - px(12), y0 + bh / 2), "midright", shadow=False)
-            for i, dbz in enumerate(steps):
-                pygame.draw.rect(surf, dbz_color(dbz), (x0 + i * bw, y0, bw, bh))
-            tx.draw(surf, "Heavy", "medium", 26, (x0 + lw + px(12), y0 + bh / 2), "midleft", shadow=False)
-        tx.draw(surf, self.store.radar.attribution, "medium", 22, (c.x + px(24), c.bottom - px(18)),
+        self.draw_legend(surf, rf)
+        tx.draw(surf, rf.attribution, "medium", 22, (c.x + px(24), c.bottom - px(18)),
                 "bottomleft", (220, 225, 230), shadow=False, outline=True)
+
+
+class RadarSlide(MapLoopSlide):
+    key = "radar"
+    title = "Doppler Radar"
+
+    def frames_for(self, page):
+        return self.store.radar
+
+
+class RegionalSlide(MapLoopSlide):
+    """One page per region shown this cycle; the app rotates the regions each cycle."""
+
+    kind = ""
+
+    def pages(self):
+        return max(1, len(self.app.cycle_regions))
+
+    def region(self, page: int) -> str:
+        regions = self.app.cycle_regions
+        return regions[page % len(regions)] if regions else ""
+
+    def title_for(self, page):
+        return f"{self.region(page)} {self.kind}".strip()
+
+    def frame_ms(self) -> int:
+        return self.cfg.regional.frame_ms
+
+
+class RegionalRadarSlide(RegionalSlide):
+    key = "regional_radar"
+    title = "Regional Radar"
+    kind = "Radar"
+
+    def frames_for(self, page):
+        return self.store.regional_radar.get(self.region(page))
+
+
+class RegionalSatelliteSlide(RegionalSlide):
+    key = "regional_satellite"
+    title = "Regional Satellite"
+    kind = "Satellite"
+    polygons = False
+    loading = "Satellite is loading…"
+
+    def frames_for(self, page):
+        return self.store.regional_satellite.get(self.region(page))
+
+    def draw_legend(self, surf, rf) -> None:
+        c, px, tx = self.t.content, self.px, self.text
+        title, note = "Infrared", "brighter = higher clouds"
+        w = max(tx.width(title, "semibold", 30), tx.width(note, "medium", 23)) + px(40)
+        badge = pygame.Rect(c.right - px(22) - w, c.y + px(22), w, px(82))
+        pygame.draw.rect(surf, (0, 18, 36), badge, border_radius=px(10))
+        pygame.draw.rect(surf, (255, 255, 255), badge, width=max(1, px(2)), border_radius=px(10))
+        tx.draw(surf, title, "semibold", 30, (badge.centerx, badge.y + px(8)), "midtop", shadow=False)
+        tx.draw(surf, note, "medium", 23, (badge.centerx, badge.bottom - px(9)), "midbottom", self.t.dim,
+                shadow=False)
 
 
 # ----------------------------------------------------------------- bulletins
@@ -470,4 +548,5 @@ class Bulletins(Slide):
 
 
 SLIDES = {cls.key: cls for cls in (Bulletins, CurrentConditions, LocalObservations, Forecast36,
-                                   Extended, AlmanacSlide, RadarSlide)}
+                                   Extended, AlmanacSlide, RadarSlide, RegionalRadarSlide,
+                                   RegionalSatelliteSlide)}
