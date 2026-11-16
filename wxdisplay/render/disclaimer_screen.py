@@ -13,7 +13,7 @@ class DisclaimerScreen:
         self.t = app.theme
         self.text = app.text
         t = self.t
-        self.panel = t.rect(110, 50, 1700, 980)
+        self.panel = t.rect(110, 50, t.dw - 220, 980)
         p = self.panel
         self.body = pygame.Rect(p.x + t.px(70), p.y + t.px(130), p.w - t.px(140), t.px(560))
         self.box = pygame.Rect(p.x + t.px(70), p.y + t.px(722), t.px(48), t.px(48))
@@ -79,9 +79,12 @@ class DisclaimerScreen:
         pygame.draw.rect(surf, (255, 255, 255), self.quit, width=max(2, t.px(3)), border_radius=t.px(12))
         tx.draw(surf, "Quit", "semibold", 40, self.quit.center, "center", shadow=False)
 
+        room = self.quit.x - self.panel.x - t.px(100)
         hint = "Space: tick the box    Enter: continue    Esc: quit    Full text: DISCLAIMER.md"
+        if tx.width(hint, "medium", 28) > room:  # narrower (4:3) screens
+            hint = "Space: tick    Enter: continue    Esc: quit"
         tx.draw(surf, hint, "medium", 28, (self.panel.x + t.px(70), self.ok.centery), "midleft", t.dim,
-                max_width=self.quit.x - self.panel.x - t.px(100))
+                max_width=room)
 
     def run(self) -> bool:
         """Show the screen until the user continues (True) or quits (False)."""

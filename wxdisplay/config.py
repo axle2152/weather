@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -15,8 +16,54 @@ ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 
 RESOLUTIONS = {"1080p": (1920, 1080), "720p": (1280, 720), "480p": (854, 480)}
+# Offered in the settings window; any size between these shapes works.
+RESOLUTION_CHOICES = ["1080p", "720p", "480p",
+                      "1440x1080 (4:3)", "1024x768 (4:3)", "800x600 (4:3)", "640x480 (4:3)"]
+MIN_SIZE, MAX_SIZE = (480, 360), (3840, 2160)
+MIN_ASPECT, MAX_ASPECT = 1.25, 1.8   # 5:4 up to a little past 16:9
 
-ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar"]
+
+def parse_resolution(text) -> tuple[int, int]:
+    """"1080p", "1024x768" or "1440 x 1080 (4:3)" -> (width, height).
+
+    Raises ValueError with a plain-English reason for anything that would not
+    display properly, so a typo can never crash the app.
+    """
+    t = re.sub(r"\(.*?\)", "", str(text)).strip().lower().replace("×", "x")
+    if t in RESOLUTIONS:
+        return RESOLUTIONS[t]
+    m = re.fullmatch(r"(\d{2,5})\s*[x*]\s*(\d{2,5})", t)
+    if not m:
+        raise ValueError(f'"{text}" isn\'t a screen size. Use 1080p, 720p, 480p, or a size like 1024x768.')
+    w, h = int(m.group(1)), int(m.group(2))
+    if not (MIN_SIZE[0] <= w <= MAX_SIZE[0] and MIN_SIZE[1] <= h <= MAX_SIZE[1]):
+        raise ValueError(f"{w}x{h} is outside the supported range "
+                         f"({MIN_SIZE[0]}x{MIN_SIZE[1]} up to {MAX_SIZE[0]}x{MAX_SIZE[1]}).")
+    aspect = w / h
+    if not MIN_ASPECT - 0.005 <= aspect <= MAX_ASPECT + 0.005:
+        shape = "wide" if aspect > MAX_ASPECT else "tall"
+        raise ValueError(f"{w}x{h} is too {shape}. Screen shapes from 4:3 (and 5:4) up to 16:9 are supported.")
+    return w, h
+
+
+def normalize_resolution(text) -> str:
+    """Canonical spelling for saving: a preset name or "WIDTHxHEIGHT"."""
+    t = re.sub(r"\(.*?\)", "", str(text)).strip().lower().replace("×", "x")
+    if t in RESOLUTIONS:
+        return t
+    w, h = parse_resolution(text)
+    return f"{w}x{h}"
+
+
+_warned_resolutions: set = set()
+
+ALL_SLIDES = ["bulletins", "current", "local_obs", "forecast_36", "extended", "almanac", "radar",
+              "regional_radar", "regional_satellite", "regional_map", "travel", "outlook"]
+
+# Settings files record the version they were written for, so slides added later can be
+# switched on in older files (which list the slides that existed back then).
+CONFIG_VERSION = 3
+NEW_SLIDES = {2: ["regional_radar", "regional_satellite"], 3: ["regional_map", "travel", "outlook"]}
 
 
 @dataclass
@@ -70,6 +117,29 @@ class RadarConfig:
 
 
 @dataclass
+class RegionalConfig:
+    regions: list = field(default_factory=list)  # region names to rotate through; empty = all, yours first
+    per_cycle: int = 1           # regions shown each time the slides come around
+    radar_frames: int = 8        # five minutes apart
+    satellite_frames: int = 8    # fifteen minutes apart
+    frame_ms: int = 220
+
+
+@dataclass
+class RegionalMapConfig:
+    zoom: float = 7.6            # map zoom at 1080p (the local radar is 8.2)
+    count: int = 10              # towns to show when picking automatically
+    cities: list = field(default_factory=list)  # "City, ST" strings; empty = pick automatically
+
+
+@dataclass
+class TravelConfig:
+    cities: list = field(default_factory=list)  # "City, ST" strings; empty = a list of popular cities
+    scroll_speed: float = 60     # pixels per second at 1080p
+    tomorrow_after: int = 15     # from this hour (local), show tomorrow's forecast instead of today's
+
+
+@dataclass
 class AlertsConfig:
     radius_miles: float = 40     # storm-based warnings within this distance count as local
     beep: bool = True
@@ -84,6 +154,9 @@ class Config:
     display: DisplayConfig = field(default_factory=DisplayConfig)
     observations: ObservationsConfig = field(default_factory=ObservationsConfig)
     radar: RadarConfig = field(default_factory=RadarConfig)
+    regional: RegionalConfig = field(default_factory=RegionalConfig)
+    regional_map: RegionalMapConfig = field(default_factory=RegionalMapConfig)
+    travel: TravelConfig = field(default_factory=TravelConfig)
     alerts: AlertsConfig = field(default_factory=AlertsConfig)
     path: Path | None = None
 
@@ -95,14 +168,12 @@ class Config:
 
     @property
     def size(self) -> tuple[int, int]:
-        res = self.display.resolution.lower().strip()
-        if res in RESOLUTIONS:
-            return RESOLUTIONS[res]
         try:
-            w, h = (int(v) for v in res.split("x"))
-            return w, h
-        except ValueError:
-            log.warning("Unknown resolution %r, using 1080p", self.display.resolution)
+            return parse_resolution(self.display.resolution)
+        except ValueError as e:
+            if self.display.resolution not in _warned_resolutions:
+                _warned_resolutions.add(self.display.resolution)
+                log.warning("%s Using 1080p instead.", e)
             return RESOLUTIONS["1080p"]
 
     @property
@@ -146,14 +217,32 @@ def load_config(path: str | Path | None = None) -> Config:
         display=_fill(DisplayConfig, data.get("display"), "display"),
         observations=_fill(ObservationsConfig, data.get("observations"), "observations"),
         radar=_fill(RadarConfig, data.get("radar"), "radar"),
+        regional=_fill(RegionalConfig, data.get("regional"), "regional"),
+        regional_map=_fill(RegionalMapConfig, data.get("regional_map"), "regional_map"),
+        travel=_fill(TravelConfig, data.get("travel"), "travel"),
         alerts=_fill(AlertsConfig, data.get("alerts"), "alerts"),
         path=path,
     )
+    version = data.get("config_version", 1)
+    if "slides" in (data.get("display") or {}):
+        for v in range(int(version) + 1, CONFIG_VERSION + 1):
+            for key in NEW_SLIDES.get(v, []):
+                if key not in cfg.display.slides:
+                    cfg.display.slides.append(key)
+                    log.info("config: added the new %s slide (turn it off in settings if you don't want it)", key)
     unknown = [s for s in cfg.display.slides if s not in ALL_SLIDES]
     if unknown:
         log.warning("config: unknown slides %s (choices: %s)", unknown, ", ".join(ALL_SLIDES))
         cfg.display.slides = [s for s in cfg.display.slides if s in ALL_SLIDES]
     cfg.radar.frames = max(1, min(12, int(cfg.radar.frames)))
+    cfg.regional.radar_frames = max(1, min(12, int(cfg.regional.radar_frames)))
+    cfg.regional.satellite_frames = max(1, min(16, int(cfg.regional.satellite_frames)))
+    cfg.regional.per_cycle = max(1, min(6, int(cfg.regional.per_cycle)))
+    from .regions import REGIONS  # here to avoid a circular import
+    bad = [r for r in cfg.regional.regions if r not in REGIONS]
+    if bad:
+        log.warning("config: unknown regions %s (choices: %s)", bad, ", ".join(REGIONS))
+        cfg.regional.regions = [r for r in cfg.regional.regions if r in REGIONS]
     cfg.display.panel_opacity = max(0.0, min(1.0, cfg.display.panel_opacity))
     return cfg
 
@@ -193,6 +282,8 @@ def render_config(cfg: Config, example: bool = False) -> str:
     """The settings as a commented TOML file (the same layout as config.example.toml)."""
     v = _toml_value
     loc, nws, d, o, r, a = cfg.location, cfg.nws, cfg.display, cfg.observations, cfg.radar, cfg.alerts
+    rg, tr, rm = cfg.regional, cfg.travel, cfg.regional_map
+    from .regions import REGIONS
     if example:
         intro = """\
 # Weather display settings.
@@ -219,6 +310,9 @@ def render_config(cfg: Config, example: bool = False) -> str:
 # This display is for entertainment only and must not be relied on for weather
 # warnings or used to alert the public. See DISCLAIMER.md.
 
+# Lets newer versions of the app switch on slides added since this file was written.
+config_version = {CONFIG_VERSION}
+
 [location]
 # Where the forecast is for. Any of these work:
 #   ZIP code:         place = "30303"
@@ -236,7 +330,7 @@ name = {v(loc.name)}
 contact = {v(nws.contact)}
 
 [display]
-resolution = {v(d.resolution):<16}# "1080p", "720p", "480p", or e.g. "1600x900"
+resolution = {v(d.resolution):<16}# "1080p", "720p", "480p", or a size like "1024x768" (4:3 to 16:9)
 fullscreen = {v(d.fullscreen)}
 borderless = {v(d.borderless):<16}# window without a title bar
 fps = {v(d.fps)}
@@ -273,6 +367,28 @@ min_dbz = {v(r.min_dbz):<19}# hide echoes weaker than this (ground clutter, bugs
 counties = {v(r.counties)}
 interstates = {v(r.interstates)}
 labels = {v(r.labels):<20}# extra cities to label, e.g. ["Peachtree City, GA"]
+
+[regional]
+# Regional radar and satellite rotate through these regions, a few each time the
+# slides come around. Leave empty for all of them, starting with yours.
+# Choices: {", ".join(REGIONS)}
+regions = {v(rg.regions)}
+per_cycle = {v(rg.per_cycle):<17}# regions shown each time the slides come around
+radar_frames = {v(rg.radar_frames):<14}# 1-12 frames, five minutes apart
+satellite_frames = {v(rg.satellite_frames):<10}# 1-16 frames, fifteen minutes apart
+frame_ms = {v(rg.frame_ms):<18}# time per frame
+
+[regional_map]
+# The Regional Conditions / Regional Forecast map around your location.
+zoom = {v(rm.zoom):<22}# bigger = closer in (the local radar is 8.2)
+count = {v(rm.count):<21}# towns to show when picking automatically
+cities = {v(rm.cities):<20}# or list your own, e.g. ["Macon, GA", "Rome, GA"]
+
+[travel]
+# Cities on the Travel Cities slide, as "City, ST". Leave empty for a list of popular cities.
+cities = {v(tr.cities)}
+scroll_speed = {v(tr.scroll_speed):<14}# how fast the list scrolls (pixels per second at 1080p)
+tomorrow_after = {v(tr.tomorrow_after):<12}# from this hour of the day, show tomorrow's forecast
 
 [alerts]
 radius_miles = {v(a.radius_miles):<14}# storm warnings within this distance count as local

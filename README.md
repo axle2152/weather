@@ -2,9 +2,10 @@
 
 A local weather display in the spirit of a cable weather channel's "local
 forecast" segment: current conditions, local observations, the 36-hour and
-extended forecasts, an almanac and a Doppler radar loop, cycling over your own
-photos with see-through "frosted glass" panels. Made to run all day and be
-streamed.
+extended forecasts, an almanac, local and regional radar, regional satellite,
+a regional conditions map, a Travel Cities forecast and the 30-day outlook,
+cycling over your own photos with see-through "frosted glass" panels. Works on
+wide (16:9) and 4:3 screens. Made to run all day and be streamed.
 
 > **⚠️ For entertainment only. Not for weather emergencies.**
 > This program has no redundancy: if the internet, the computer or the
@@ -57,10 +58,12 @@ settings a few seconds later. You can also open it on its own with
 | Tab | What you can change |
 | --- | --- |
 | Location | Where the forecast is for (with a **Check location** button), the name on screen, your contact email |
-| Display | Resolution, full screen, timing, background photo folder, panel color and opacity |
+| Display | Resolution (16:9 or 4:3 screens), full screen, timing, background photo folder, panel color and opacity |
 | Slides | Which slides to show and in what order |
 | Observations | The Current Conditions station; Local Observations cities picked automatically or chosen by you |
 | Radar | Radar source, zoom, map center, loop length and speed, clutter filter, map lines, extra city labels |
+| Regional | Which US regions the regional radar and satellite rotate through, how many per pass, loop lengths; the regional map's zoom and number of towns |
+| Travel | The Travel Cities list, scroll speed, and when it switches to tomorrow's forecast |
 | Alerts | How far away storm warnings count, the beep, a test warning, extra NWS zones to watch |
 
 Settings are saved in `config.toml` (which git ignores, so your contact info
@@ -77,7 +80,7 @@ On Linux you may need to install your distribution's `python3-tk` package.
 | `python weather.py --settings` | Open the settings window without starting the display |
 | `python weather.py --check` | Show what it found for your location and exit |
 | `python weather.py --place "Denver, CO"` | Try another location without editing the config |
-| `python weather.py --resolution 720p` | Run at 720p (or `480p`, or e.g. `1600x900`) |
+| `python weather.py --resolution 720p` | Run at 720p (or `480p`, a 4:3 size like `1024x768`, or e.g. `1600x900`) |
 | `python weather.py --fullscreen` | Full screen |
 | `python weather.py --test-warning` | Show a test message in the red warning crawl |
 | `python weather.py --screenshots shots` | Save a picture of every slide to `shots/` and exit |
@@ -105,6 +108,11 @@ opacity on the Display tab in settings.
 | The Extended Forecast | Four days of highs, lows, sky and wind |
 | Almanac | Sunrise, sunset, twilight, daylight length and the next four moon phases |
 | Doppler Radar | An animated loop over a map of your area, with warning boxes drawn on it |
+| Regional Radar | Radar for a US region (Southeast, Ohio Valley, Pacific Northwest and so on); a different region each time the slides come around, starting with yours |
+| Regional Satellite | An infrared satellite loop for the same region: bright white for high, cold cloud tops |
+| Regional Conditions / Regional Forecast | A map from your area out to the surrounding region: current temperatures and sky for about ten towns, then the day's highs and lows |
+| 30 Day Outlook | The Climate Prediction Center's outlook for the month: warmer/colder and wetter/drier than normal, on US maps with your area's odds |
+| Travel Cities Forecast | A slowly scrolling list of popular US cities with an icon, low and high (today's, or tomorrow's later in the day) |
 
 The bottom bar cycles through the current conditions. When a warning is in
 effect for your area, it turns red and crawls the warning text, with a beep
@@ -116,6 +124,8 @@ Pick and order the slides with `slides = [...]` in `config.toml`.
 
 - **Forecasts, observations, alerts:** the [National Weather Service API](https://www.weather.gov/documentation/services-web-api) (public domain)
 - **Radar:** the [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/) NEXRAD composite, with the NWS radar loop images as a fallback
+- **Satellite:** NOAA GOES infrared imagery from the Iowa Environmental Mesonet archive
+- **30-day outlook:** NOAA [Climate Prediction Center](https://www.cpc.ncep.noaa.gov/) (public domain)
 - **Map:** [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map) shaded relief (public domain),
   [US Census Bureau](https://www.census.gov/geographies/mapping-files.html) state, county and Interstate outlines (public domain),
   and [Natural Earth](https://www.naturalearthdata.com/) for Canada and Mexico (public domain)

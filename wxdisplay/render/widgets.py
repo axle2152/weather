@@ -209,7 +209,7 @@ class Panels:
                          border_radius=self.theme.radius)
         surf.blit(border, (0, 0))
         self.cache[key] = surf
-        if len(self.cache) > 80:
+        if len(self.cache) > 30:
             self.cache.popitem(last=False)
         return surf
 

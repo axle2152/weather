@@ -114,15 +114,27 @@ def run_display(args, cfg, client, site, first: bool):
     log = logging.getLogger(APP_NAME)
     from .data import DataStore, Updater
     from .radar import Radar
+    from .regional import RegionalMaps, RegionalWeatherMap
     from .render.app import QUIT, RELOAD, App
     from .render.theme import Theme
 
     store = DataStore(site)
-    radar = None
-    if "radar" in cfg.display.slides:
-        theme = Theme(cfg)
-        radar = Radar(cfg, site, theme.content.size, theme.s, client.session.headers["User-Agent"])
-    updater = Updater(cfg, client, store, radar)
+    theme = Theme(cfg)
+    ua = client.session.headers["User-Agent"]
+    radar = Radar(cfg, site, theme.content.size, theme.s, ua) if "radar" in cfg.display.slides else None
+    regional = None
+    if {"regional_radar", "regional_satellite"} & set(cfg.display.slides):
+        regional = RegionalMaps(cfg, site, theme.content.size, theme.s, ua)
+        store.region_list = regional.regions
+    regional_map = None
+    if "regional_map" in cfg.display.slides:
+        regional_map = RegionalWeatherMap(cfg, site, theme.content.size, theme.s, ua, None)
+    outlook = None
+    if "outlook" in cfg.display.slides:
+        from .outlook import Outlook
+        from .render.slides import OutlookSlide
+        outlook = Outlook(cfg, site, OutlookSlide.map_rects(theme)[0].size, theme.s, ua)
+    updater = Updater(cfg, client, store, radar, regional, regional_map, outlook)
 
     if args.screenshots:
         if not disclaimer.accepted():

@@ -350,6 +350,13 @@ class DataStore:
         self.alerts: list = []
         self.almanac: Almanac | None = None
         self.radar = None                   # radar.RadarFrames
+        self.regional_radar: dict = {}      # region name -> RadarFrames
+        self.regional_satellite: dict = {}  # region name -> RadarFrames
+        self.regions_wanted: list = []      # set by the renderer: regions shown now and next
+        self.region_list: list = []         # every region the regional slides rotate through
+        self.travel: list = []              # [(cities.City, Forecast)]
+        self.regional_map = None            # regional.RegionalMapData
+        self.outlook = None                 # {"temp": OutlookPart, "prcp": OutlookPart}
         self.versions: dict = {}
         self.updated: dict = {}
 
@@ -370,9 +377,11 @@ class DataStore:
 class Updater(threading.Thread):
     """Refreshes the DataStore on a schedule. Network calls only ever happen here."""
 
-    def __init__(self, cfg: Config, client: NWSClient, store: DataStore, radar=None):
+    def __init__(self, cfg: Config, client: NWSClient, store: DataStore, radar=None, regional=None,
+                 regional_map=None, outlook=None):
         super().__init__(name="updater", daemon=True)
         self.cfg, self.client, self.store, self.radar = cfg, client, store, radar
+        self.regional = regional
         self.site = store.site
         self.stop_event = threading.Event()
         self.alert_states = self._alert_states()
@@ -385,6 +394,22 @@ class Updater(threading.Thread):
         ]
         if radar is not None:
             self.jobs.append(("radar", self.update_radar, lambda: 120))
+        if regional is not None:
+            self.jobs.append(("regional", self.update_regional, lambda: 60))
+        self.citywx = None
+        self.regional_map = regional_map
+        if "travel" in cfg.display.slides or regional_map is not None:
+            from .cities import CityWeather
+            self.citywx = CityWeather(client, cfg.cache_dir)
+        if "travel" in cfg.display.slides:
+            self.jobs.append(("travel", self.update_travel, lambda: 3600 if self.store.travel else 300))
+        self.outlook = outlook
+        if outlook is not None:
+            self.jobs.append(("outlook", self.update_outlook, lambda: 6 * 3600 if self.store.outlook else 900))
+        if regional_map is not None:
+            regional_map.citywx = self.citywx
+            self.jobs.append(("regional_map", self.update_regional_map,
+                              lambda: 600 if self.store.regional_map else 120))
         self.next_run = {name: 0.0 for name, _, _ in self.jobs}
 
     def _warning_active(self) -> bool:
@@ -412,8 +437,12 @@ class Updater(threading.Thread):
             log.exception("updating %s failed", name)
 
     def run(self) -> None:
+        last_wanted = None
         while not self.stop_event.is_set():
             now = time.time()
+            if self.regional is not None and self.store.regions_wanted != last_wanted:
+                last_wanted = list(self.store.regions_wanted)
+                self.next_run["regional"] = 0  # new regions coming up: fetch them now
             for name, fn, interval in self.jobs:
                 if now >= self.next_run[name]:
                     self._run(name, fn)
@@ -479,3 +508,43 @@ class Updater(threading.Thread):
         frames = self.radar.update()
         if frames is not None:
             self.store.put("radar", frames)
+
+    def update_travel(self) -> None:
+        from .cities import TRAVEL_CITIES, lookup_places
+        places = lookup_places(self.cfg.travel.cities or TRAVEL_CITIES)
+        cities = self.citywx.resolve_many(places)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            forecasts = list(pool.map(self.citywx.forecast, cities))
+        previous = {c.name: f for c, f in self.store.travel}
+        rows = []
+        for city, fc in zip(cities, forecasts):
+            fc = fc or previous.get(city.name)   # keep the last good forecast if this one failed
+            if fc:
+                rows.append((city, fc))
+                for p in fc.periods[:4]:
+                    self.client.icon_path(p.icon, size="medium")
+        if rows:
+            self.store.put("travel", rows)
+
+    def update_outlook(self) -> None:
+        parts = self.outlook.update()
+        if parts:
+            self.store.put("outlook", parts)
+
+    def update_regional_map(self) -> None:
+        data = self.regional_map.update()
+        for c, *_ in data.cities:
+            o = data.observations.get(c.name)
+            if o:
+                self.client.icon_path(o.icon, size="medium")
+            fc = data.forecasts.get(c.name)
+            for p in (fc.periods[:4] if fc else []):
+                self.client.icon_path(p.icon, size="medium")
+        self.store.put("regional_map", data)
+
+    def update_regional(self) -> None:
+        radar, satellite = self.regional.update(list(self.store.regions_wanted))
+        if radar is not None:
+            self.store.put("regional_radar", radar)
+        if satellite is not None:
+            self.store.put("regional_satellite", satellite)

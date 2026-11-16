@@ -19,7 +19,7 @@ from ..config import ROOT, Config, config_path, load_config
 from ..data import DataStore
 from .audio import Beeper
 from .disclaimer_screen import DisclaimerScreen
-from .slides import SLIDES, RadarSlide
+from .slides import SLIDES, MapLoopSlide
 from .theme import Theme
 from .ticker import LowerBar
 from .widgets import Backgrounds, Icons, Panels, Text
@@ -62,6 +62,8 @@ class App:
             flags |= pygame.FULLSCREEN | pygame.SCALED  # desktop full screen, scaled to fit the monitor
         elif cfg.display.borderless and not headless:
             flags |= pygame.NOFRAME
+        if not headless and not cfg.display.fullscreen:
+            self._check_fits_screen()
         self.screen = pygame.display.set_mode((self.theme.w, self.theme.h), flags)
         pygame.display.set_caption(f"{APP_NAME} - {store.site.name}, {store.site.state}"
                                    "      S or right-click: settings   F11: full screen   Esc: quit")
@@ -72,6 +74,9 @@ class App:
         self.icons = Icons(self.theme, client)
         self.backgrounds = Backgrounds(self.theme, cfg.background_dir, cfg.display.frosted)
         self.beeper = Beeper(cfg.alerts.beep and not headless)
+        self.region_cycle = 0
+        self.cycle_regions: list = []
+        self._set_region_cycle(0)
         self.slides = {key: cls(self) for key, cls in SLIDES.items()}
         self.lower = LowerBar(self)
         self.static: OrderedDict = OrderedDict()
@@ -81,6 +86,16 @@ class App:
         self.fade_from = None   # (old Background, start time) during a background crossfade
         self.bg_changed = time.monotonic()
         self.time_slot = self.text.tabular_width("00:00:00 PM", "medium", 50)
+
+    def _check_fits_screen(self) -> None:
+        try:
+            dw, dh = pygame.display.get_desktop_sizes()[0]
+        except (pygame.error, IndexError):
+            return
+        if self.theme.w > dw or self.theme.h > dh:
+            log.warning("The %dx%d window is bigger than your %dx%d screen, so part of it will be cut off. "
+                        "Pick a smaller resolution in settings, or turn on full screen (it scales to fit).",
+                        self.theme.w, self.theme.h, dw, dh)
 
     # ------------------------------------------------------------ playlist
 
@@ -92,9 +107,32 @@ class App:
                 items += [(slide, page) for page in range(slide.pages())]
         return items or [(self.slides["current"], 0)]
 
+    def _regions_for(self, cycle: int) -> list:
+        regions = self.store.region_list
+        if not regions:
+            return []
+        per = min(self.cfg.regional.per_cycle, len(regions))
+        return list(dict.fromkeys(regions[(cycle * per + i) % len(regions)] for i in range(per)))
+
+    def _set_region_cycle(self, cycle: int) -> None:
+        """Pick this pass's regions, and tell the updater to fetch them and the next pass's."""
+        self.region_cycle = cycle
+        self.cycle_regions = self._regions_for(cycle)
+        self.store.regions_wanted = list(dict.fromkeys(self.cycle_regions + self._regions_for(cycle + 1)))
+        if self.cycle_regions:
+            log.debug("regional slides this pass: %s", ", ".join(self.cycle_regions))
+
     def next_slide(self, now: float) -> None:
+        if 0 <= self.pos < len(self.playlist):
+            leaving = self.playlist[self.pos][0]
+            upcoming = self.playlist[self.pos + 1][0] if self.pos + 1 < len(self.playlist) else None
+            if upcoming is not leaving:
+                leaving.release()
         self.pos += 1
         if self.pos >= len(self.playlist):
+            # Move on to the next regions only once these were actually shown (not still loading).
+            if any(getattr(slide, "kind", "") for slide, _ in self.playlist):
+                self._set_region_cycle(self.region_cycle + 1)
             self.playlist = self.build_playlist()
             self.pos = 0
             if self.cfg.display.background_seconds <= 0:
@@ -120,14 +158,14 @@ class App:
             for r in [self.theme.header] + rects:
                 surf.blit(self.panels.get(bg, r), r)
             self.static[key] = surf
-            if len(self.static) > 16:
+            if len(self.static) > 4:  # each is a full screen image (8 MB at 1080p)
                 self.static.popitem(last=False)
         return surf
 
     def draw_header(self, surf: pygame.Surface, title: str) -> None:
         h, px = self.theme.header, self.theme.px
         now = dt.datetime.now(self.tz)
-        date = now.strftime("%B %d, %Y").replace(" 0", " ")
+        date = now.strftime("%b %d, %Y" if self.theme.narrow else "%B %d, %Y").replace(" 0", " ")
         clock = now.strftime("%H:%M:%S") if self.cfg.display.clock_24h else now.strftime("%I:%M:%S %p")
         x, cy = h.x + px(36), h.centery
         r = self.text.draw(surf, date, "medium", 50, (x, cy), "midleft")
@@ -259,9 +297,8 @@ class App:
         for i, (slide, page) in enumerate(self.playlist):
             self.slide_start = base
             t = 2.0
-            if isinstance(slide, RadarSlide):
-                slide._prepare()
-                t = slide.loop_seconds() - 0.1  # newest frame
+            if isinstance(slide, MapLoopSlide):
+                t = slide.loop_seconds(page) - 0.1  # newest frame
             self.lower.crawl_x = None
             self.lower.last = None
             self.draw_frame(self.screen, base + t, slide, page)

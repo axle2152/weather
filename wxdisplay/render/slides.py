@@ -50,6 +50,9 @@ class Slide:
     def draw(self, surf: pygame.Surface, page: int, t: float) -> None:
         pass
 
+    def release(self) -> None:
+        """Called when the slide goes off screen: drop anything big that can be rebuilt."""
+
     # helpers
     def px(self, v: float) -> int:
         return self.t.px(v)
@@ -70,7 +73,7 @@ class CurrentConditions(Slide):
 
     def layout(self, page):
         c, gap = self.t.content, self.t.gap
-        lw = self.px(700)
+        lw = self.t.cx(700)
         return [pygame.Rect(c.x, c.y, lw, c.h), pygame.Rect(c.x + lw + gap, c.y, c.w - lw - gap, c.h)]
 
     def draw(self, surf, page, t):
@@ -131,8 +134,9 @@ class LocalObservations(Slide):
     def draw(self, surf, page, t):
         c, px, tx = self.t.content, self.px, self.text
         rows = self.store.observations[page * self.ROWS:(page + 1) * self.ROWS]
-        cols = {"city": c.x + px(44), "icon": c.x + px(560), "temp": c.x + px(790),
-                "wx": c.x + px(850), "wind": c.x + px(1440)}
+        cx = self.t.cx
+        cols = {"city": c.x + cx(44), "icon": c.x + cx(560), "temp": c.x + cx(790),
+                "wx": c.x + cx(850), "wind": c.x + cx(1440)}
         hy = c.y + px(30)
         for key, label, anchor in (("city", "City", "topleft"), ("temp", "Temp", "topright"),
                                    ("wx", "Weather", "topleft"), ("wind", "Wind", "topleft")):
@@ -141,7 +145,7 @@ class LocalObservations(Slide):
         rh = (c.bottom - px(26) - top) / self.ROWS
         for i, (station, o) in enumerate(rows):
             cy = top + rh * (i + 0.5)
-            tx.draw(surf, tx.ellipsize(station.name, "semibold", 46, px(480)), "semibold", 46,
+            tx.draw(surf, tx.ellipsize(station.name, "semibold", 46, cx(480)), "semibold", 46,
                     (cols["city"], cy), "midleft")
             if o is None:
                 tx.draw(surf, "No Report", "medium", 44, (cols["wx"], cy), "midleft", self.t.dim)
@@ -151,7 +155,7 @@ class LocalObservations(Slide):
                 surf.blit(icon, icon.get_rect(center=(cols["icon"] + px(40), cy)))
             tx.draw(surf, f"{o.temp_f}°" if o.temp_f is not None else "--", "semibold", 48,
                     (cols["temp"], cy), "midright")
-            tx.draw(surf, tx.ellipsize(o.text or "--", "medium", 42, px(560)), "medium", 42,
+            tx.draw(surf, tx.ellipsize(o.text or "--", "medium", 42, cx(560)), "medium", 42,
                     (cols["wx"], cy), "midleft")
             wind = "Calm" if o.wind_mph == 0 else (
                 f"{o.wind_dir or ''} {o.wind_mph}".strip() if o.wind_mph is not None else "--")
@@ -244,20 +248,25 @@ class AlmanacSlide(Slide):
     def draw(self, surf, page, t):
         top, bottom = self.layout(page)
         px, tx, a = self.px, self.text, self.store.almanac
-        cols = [top.x + px(1010), top.x + px(1520)]
+        cols = [top.x + self.t.cx(1010), top.x + self.t.cx(1520)]
         for x, day in zip(cols, a.days):
-            tx.draw(surf, day.label, "semibold", 48, (x, top.y + px(24)), "midtop", self.t.accent)
-            sub = day.date.strftime("%b %d").replace(" 0", " ")
-            if day.daylight:
-                h, m = divmod(round(day.daylight.total_seconds() / 60), 60)
-                sub += f"  ·  {h}h {m}m daylight"
-            tx.draw(surf, sub, "medium", 32, (x, top.y + px(82)), "midtop", self.t.dim)
-        rows = [("Twilight Begins", "dawn"), ("Sunrise", "sunrise"), ("Sunset", "sunset"), ("Twilight Ends", "dusk")]
-        for i, (label, attr) in enumerate(rows):
-            cy = top.y + px(160) + i * px(56)
-            tx.draw(surf, label, "medium", 44, (top.x + px(70), cy), "midleft", self.t.dim)
+            tx.draw(surf, day.label, "semibold", 48, (x, top.y + px(20)), "midtop", self.t.accent)
+            tx.draw(surf, day.date.strftime("%a %b %d").replace(" 0", " "), "medium", 32,
+                    (x, top.y + px(76)), "midtop", self.t.dim)
+
+        def daylight(day):
+            if not day.daylight:
+                return "--"
+            h, m = divmod(round(day.daylight.total_seconds() / 60), 60)
+            return f"{h}h {m}m"
+        rows = [("Twilight Begins", lambda d: self.time(d.dawn)), ("Sunrise", lambda d: self.time(d.sunrise)),
+                ("Sunset", lambda d: self.time(d.sunset)), ("Twilight Ends", lambda d: self.time(d.dusk)),
+                ("Daylight", daylight)]
+        for i, (label, value) in enumerate(rows):
+            cy = top.y + px(150) + i * px(48)
+            tx.draw(surf, label, "medium", 42, (top.x + px(70), cy), "midleft", self.t.dim)
             for x, day in zip(cols, a.days):
-                tx.draw(surf, self.time(getattr(day, attr)), "semibold", 46, (x, cy), "center")
+                tx.draw(surf, value(day), "semibold", 44, (x, cy), "center")
 
         mcols = self.t.columns(pygame.Rect(bottom.x + px(40), bottom.y, bottom.w - px(80), bottom.h), 4)
         for col, moon in zip(mcols, a.moons):
@@ -270,49 +279,70 @@ class AlmanacSlide(Slide):
 
 # --------------------------------------------------------------------- radar
 
-class RadarSlide(Slide):
-    key = "radar"
-    title = "Doppler Radar"
+class MapLoopSlide(Slide):
+    """An animated loop over a map: local radar, regional radar, regional satellite."""
+
     LOOPS = 3
-    HOLD = 1.6  # seconds to pause on the newest frame
+    HOLD = 1.6        # seconds to pause on the newest frame
+    polygons = True   # draw warning boxes
+    loading = "Radar is loading…"
 
     def __init__(self, app):
         super().__init__(app)
-        self.version = -1
-        self.alert_version = -1
-        self.base = None
-        self.frames: list = []
-        self.labels = None
-        self.polys = None
+        self._prepared: dict = {}     # id(RadarFrames) -> surfaces (only the last couple kept)
+        self._alert_version = -1
+
+    # subclasses say where their frames come from
+    def frames_for(self, page: int):
+        raise NotImplementedError
+
+    def release(self) -> None:
+        self._prepared = {}   # a loop's frames as screen images are tens of MB; rebuilt in a blink
+
+    def frame_ms(self) -> int:
+        return self.cfg.radar.frame_ms
 
     def available(self):
-        rf = self.store.radar
+        return any(self._ready(self.frames_for(p)) for p in range(self.pages()))
+
+    @staticmethod
+    def _ready(rf) -> bool:
         return rf is not None and bool(rf.frames)
 
-    def loop_seconds(self) -> float:
-        return len(self.frames or self.store.radar.frames) * self.cfg.radar.frame_ms / 1000 + self.HOLD
+    def loop_seconds(self, page: int = 0) -> float:
+        rf = self.frames_for(page)
+        n = len(rf.frames) if self._ready(rf) else 1
+        return n * self.frame_ms() / 1000 + self.HOLD
 
     def duration(self, page):
-        return max(self.cfg.display.slide_seconds, self.LOOPS * self.loop_seconds()) if self.available() \
-            else self.cfg.display.slide_seconds
+        if not self._ready(self.frames_for(page)):
+            return self.cfg.display.slide_seconds
+        return max(self.cfg.display.slide_seconds, self.LOOPS * self.loop_seconds(page))
 
-    def _prepare(self):
-        rf = self.store.radar
-        size = self.t.content.size
-        r = self.t.radius
-        if self.store.version("radar") != self.version:
-            self.version = self.store.version("radar")
-            self.base = round_corners(pil_to_surface(rf.basemap.resize(size)), r) if rf.basemap else None
-            self.frames = []
+    def _prepare(self, rf) -> dict:
+        size, r = self.t.content.size, self.t.radius
+        prep = self._prepared.get(id(rf))
+        if prep is None or prep["rf"] is not rf:
+            frames = []
             for when, img in rf.frames:
                 if img.size != size:
                     img = img.resize(size)
-                self.frames.append((when, round_corners(pil_to_surface(img, alpha=True), r)))
-            self.labels = self._labels_overlay(rf)
-            self.alert_version = -1
-        if self.store.version("alerts") != self.alert_version:
-            self.alert_version = self.store.version("alerts")
-            self.polys = self._polygon_overlay(rf)
+                see_through = img.mode == "RGBA" or (img.mode == "P" and "transparency" in img.info)
+                frames.append((when, round_corners(pil_to_surface(img, alpha=see_through), r)))
+            prep = {
+                "rf": rf,
+                "base": round_corners(pil_to_surface(rf.basemap.resize(size)), r) if rf.basemap else None,
+                "frames": frames,
+                "overlay": pil_to_surface(rf.overlay.resize(size), alpha=True) if rf.overlay else None,
+                "labels": self._labels_overlay(rf),
+                "polys": None,
+                "alerts": -1,
+            }
+            self._prepared = {id(rf): prep}
+        if self.polygons and prep["alerts"] != self.store.version("alerts"):
+            prep["alerts"] = self.store.version("alerts")
+            prep["polys"] = self._polygon_overlay(rf)
+        return prep
 
     def _labels_overlay(self, rf):
         if not rf.labels or rf.view is None:
@@ -344,48 +374,316 @@ class RadarSlide(Slide):
                 drew = True
         return over if drew else None
 
-    def frame_index(self, t: float) -> int:
-        n = len(self.frames)
-        step = self.cfg.radar.frame_ms / 1000
-        pos = t % self.loop_seconds()
+    def frame_index(self, t: float, n: int, page: int) -> int:
+        step = self.frame_ms() / 1000
+        pos = t % self.loop_seconds(page)
         return min(n - 1, int(pos / step))
+
+    def draw_legend(self, surf, rf) -> None:
+        if rf.source != "iem":
+            return
+        c, px, tx = self.t.content, self.px, self.text
+        steps = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
+        bw, bh = px(30), px(20)
+        lw = len(steps) * bw
+        x0 = c.right - px(30) - lw - px(90)
+        y0 = c.bottom - px(48)
+        box = pygame.Rect(x0 - px(100), y0 - px(14), lw + px(210), bh + px(28))
+        pygame.draw.rect(surf, (0, 18, 36), box, border_radius=px(8))
+        tx.draw(surf, "Light", "medium", 26, (x0 - px(12), y0 + bh / 2), "midright", shadow=False)
+        for i, dbz in enumerate(steps):
+            pygame.draw.rect(surf, dbz_color(dbz), (x0 + i * bw, y0, bw, bh))
+        tx.draw(surf, "Heavy", "medium", 26, (x0 + lw + px(12), y0 + bh / 2), "midleft", shadow=False)
 
     def draw(self, surf, page, t):
         c = self.t.content
-        if not self.available():
-            self.message(surf, "Radar is loading…" if "radar" not in self.store.updated else "Radar not available")
+        rf = self.frames_for(page)
+        if not self._ready(rf):
+            self.message(surf, self.loading)
             return
-        self._prepare()
-        if self.base:
-            surf.blit(self.base, c)
-        when, frame = self.frames[self.frame_index(t)]
+        prep = self._prepare(rf)
+        if prep["base"]:
+            surf.blit(prep["base"], c)
+        when, frame = prep["frames"][self.frame_index(t, len(prep["frames"]), page)]
         surf.blit(frame, c)
-        if self.polys:
-            surf.blit(self.polys, c)
-        if self.labels:
-            surf.blit(self.labels, c)
+        for layer in ("overlay", "polys", "labels"):
+            if prep[layer]:
+                surf.blit(prep[layer], c)
         px, tx = self.px, self.text
-        # time badge
         label = self.time(when) if when else "Latest"
         badge = pygame.Rect(c.x + px(22), c.y + px(22), px(250), px(66))
         pygame.draw.rect(surf, (0, 18, 36), badge, border_radius=px(10))
         pygame.draw.rect(surf, (255, 255, 255), badge, width=max(1, px(2)), border_radius=px(10))
         tx.draw_tabular(surf, label, "semibold", 40, badge.center, "center", shadow=False)
-        # legend
-        if self.store.radar.source == "iem":
-            steps = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65]
-            bw, bh = px(30), px(20)
-            lw = len(steps) * bw
-            x0 = c.right - px(30) - lw - px(90)
-            y0 = c.bottom - px(48)
-            box = pygame.Rect(x0 - px(100), y0 - px(14), lw + px(210), bh + px(28))
-            pygame.draw.rect(surf, (0, 18, 36), box, border_radius=px(8))
-            tx.draw(surf, "Light", "medium", 26, (x0 - px(12), y0 + bh / 2), "midright", shadow=False)
-            for i, dbz in enumerate(steps):
-                pygame.draw.rect(surf, dbz_color(dbz), (x0 + i * bw, y0, bw, bh))
-            tx.draw(surf, "Heavy", "medium", 26, (x0 + lw + px(12), y0 + bh / 2), "midleft", shadow=False)
-        tx.draw(surf, self.store.radar.attribution, "medium", 22, (c.x + px(24), c.bottom - px(18)),
+        self.draw_legend(surf, rf)
+        tx.draw(surf, rf.attribution, "medium", 22, (c.x + px(24), c.bottom - px(18)),
                 "bottomleft", (220, 225, 230), shadow=False, outline=True)
+
+
+class RadarSlide(MapLoopSlide):
+    key = "radar"
+    title = "Doppler Radar"
+
+    def frames_for(self, page):
+        return self.store.radar
+
+
+class RegionalSlide(MapLoopSlide):
+    """One page per region shown this cycle; the app rotates the regions each cycle."""
+
+    kind = ""
+
+    def pages(self):
+        return max(1, len(self.app.cycle_regions))
+
+    def region(self, page: int) -> str:
+        regions = self.app.cycle_regions
+        return regions[page % len(regions)] if regions else ""
+
+    def title_for(self, page):
+        return f"{self.region(page)} {self.kind}".strip()
+
+    def frame_ms(self) -> int:
+        return self.cfg.regional.frame_ms
+
+
+class RegionalRadarSlide(RegionalSlide):
+    key = "regional_radar"
+    title = "Regional Radar"
+    kind = "Radar"
+
+    def frames_for(self, page):
+        return self.store.regional_radar.get(self.region(page))
+
+
+class RegionalSatelliteSlide(RegionalSlide):
+    key = "regional_satellite"
+    title = "Regional Satellite"
+    kind = "Satellite"
+    polygons = False
+    loading = "Satellite is loading…"
+
+    def frames_for(self, page):
+        return self.store.regional_satellite.get(self.region(page))
+
+    def draw_legend(self, surf, rf) -> None:
+        c, px, tx = self.t.content, self.px, self.text
+        title, note = "Infrared", "brighter = higher clouds"
+        w = max(tx.width(title, "semibold", 30), tx.width(note, "medium", 23)) + px(40)
+        badge = pygame.Rect(c.right - px(22) - w, c.y + px(22), w, px(82))
+        pygame.draw.rect(surf, (0, 18, 36), badge, border_radius=px(10))
+        pygame.draw.rect(surf, (255, 255, 255), badge, width=max(1, px(2)), border_radius=px(10))
+        tx.draw(surf, title, "semibold", 30, (badge.centerx, badge.y + px(8)), "midtop", shadow=False)
+        tx.draw(surf, note, "medium", 23, (badge.centerx, badge.bottom - px(9)), "midbottom", self.t.dim,
+                shadow=False)
+
+
+# ------------------------------------------------------------ regional map
+
+class RegionalMapSlide(Slide):
+    """Page 1: current temperatures around the region. Page 2: the day's highs and night's lows."""
+
+    key = "regional_map"
+    title = "Regional Conditions"
+
+    def __init__(self, app):
+        super().__init__(app)
+        self._base = None
+        self._base_for = None
+
+    def available(self):
+        return self.store.regional_map is not None
+
+    def pages(self):
+        return 2
+
+    def title_for(self, page):
+        return "Regional Conditions" if page == 0 else "Regional Forecast"
+
+    def _tomorrow(self) -> bool:
+        return dt.datetime.now(self.app.tz).hour >= self.cfg.travel.tomorrow_after
+
+    def draw(self, surf, page, t):
+        from ..cities import day_forecast
+        data = self.store.regional_map
+        c, px, tx = self.t.content, self.px, self.text
+        if data is None:
+            self.message(surf, "Loading the regional map…")
+            return
+        if self._base_for is not data.basemap:
+            self._base = round_corners(pil_to_surface(data.basemap.resize(c.size)), self.t.radius)
+            self._base_for = data.basemap
+        surf.blit(self._base, c)
+        if page == 0:
+            caption = "Current Temperatures"
+        else:
+            tomorrow = self._tomorrow()
+            caption = ("Tomorrow" if tomorrow else "Today") + "'s Highs and Lows"
+        w = tx.width(caption, "semibold", 34) + px(44)
+        badge = pygame.Rect(c.x + px(22), c.y + px(22), w, px(62))
+        pygame.draw.rect(surf, (0, 18, 36), badge, border_radius=px(10))
+        pygame.draw.rect(surf, (255, 255, 255), badge, width=max(1, px(2)), border_radius=px(10))
+        tx.draw(surf, caption, "semibold", 34, badge.center, "center", shadow=False)
+
+        icon_size = px(66)
+        for city, x, y, home in data.cities:
+            if not (0 <= x <= c.w and 0 <= y <= c.h):
+                continue
+            x, y = c.x + x, c.y + y
+            if page == 0:
+                o = data.observations.get(city.name)
+                icon_url = o.icon if o else None
+                temps = [(f"{o.temp_f}°" if o and o.temp_f is not None else "--", self.t.text, 52)]
+            else:
+                fc = data.forecasts.get(city.name)
+                d = day_forecast(city, fc, tomorrow) if fc else None
+                icon_url = d.icon if d else None
+                temps = [(f"{d.high}°" if d and d.high is not None else "--", self.t.hi, 44),
+                         (f"{d.low}°" if d and d.low is not None else "--", self.t.lo, 36)]
+            icon = self.icons.weather(icon_url, icon_size, nws_size="medium")
+            # marker: icon to the left of the spot, temperatures to the right, name underneath
+            if icon:
+                surf.blit(icon, icon.get_rect(midright=(x - px(4), y)))
+            if len(temps) == 1:
+                tx.draw(surf, temps[0][0], "bold", temps[0][2], (x + px(8), y), "midleft", temps[0][1],
+                        outline=True)
+            else:
+                tx.draw(surf, temps[0][0], "bold", temps[0][2], (x + px(8), y + px(2)), "bottomleft", temps[0][1],
+                        outline=True)
+                tx.draw(surf, temps[1][0], "bold", temps[1][2], (x + px(10), y + px(2)), "topleft", temps[1][1],
+                        outline=True)
+            tx.draw(surf, city.name, "semibold", 30 if home else 27, (x, y + icon_size / 2 + px(6)), "midtop",
+                    self.t.accent if home else (255, 255, 255), outline=True)
+        tx.draw(surf, "Source: National Weather Service  ·  Map: USGS, US Census Bureau", "medium", 22,
+                (c.x + px(24), c.bottom - px(18)), "bottomleft", (220, 225, 230), shadow=False, outline=True)
+
+
+# ------------------------------------------------------------- 30-day outlook
+
+class OutlookSlide(Slide):
+    key = "outlook"
+    title = "30 Day Outlook"
+
+    @staticmethod
+    def map_rects(theme) -> list:
+        """Where the two maps go: one per column, under the column title."""
+        rects = []
+        for col in theme.columns(theme.content, 2):
+            w = col.w - theme.px(48)
+            h = min(round(w * 0.56), theme.px(470))
+            rects.append(pygame.Rect(col.centerx - w // 2, col.y + theme.px(92), w, h))
+        return rects
+
+    def __init__(self, app):
+        super().__init__(app)
+        self._maps: dict = {}
+
+    def available(self):
+        return bool(self.store.outlook)
+
+    def layout(self, page):
+        return self.t.columns(self.t.content, 2)
+
+    def title_for(self, page):
+        parts = self.store.outlook or {}
+        valid = next((p.valid for p in parts.values() if p.valid), "")
+        if valid and self.t.narrow:  # "November 2026" -> "Nov 2026" so the title fits on 4:3 screens
+            month, _, year = valid.partition(" ")
+            valid = f"{month[:3]} {year}"
+        return f"30 Day Outlook: {valid}" if valid else self.title
+
+    def draw(self, surf, page, t):
+        parts = self.store.outlook or {}
+        px, tx = self.px, self.text
+        for col, rect, (kind, label) in zip(self.layout(page), self.map_rects(self.t),
+                                            (("temp", "Temperature"), ("prcp", "Precipitation"))):
+            tx.draw(surf, label, "semibold", 48, (col.centerx, col.y + px(22)), "midtop", self.t.accent)
+            part = parts.get(kind)
+            if part is None:
+                self.message(surf, "Not available", rect)
+                continue
+            if self._maps.get(kind, (None,))[0] is not part.map:
+                self._maps[kind] = (part.map, round_corners(pil_to_surface(part.map.resize(rect.size)),
+                                                            self.t.radius // 2))
+            surf.blit(self._maps[kind][1], rect)
+            hx, hy = part.view.to_px(self.store.site.lon, self.store.site.lat)
+            hx = rect.x + hx * rect.w / part.view.width
+            hy = rect.y + hy * rect.h / part.view.height
+            if rect.collidepoint(hx, hy):  # (Alaska and Hawaii are off this map)
+                pygame.draw.circle(surf, (0, 0, 0), (round(hx), round(hy)), px(10))
+                pygame.draw.circle(surf, self.t.accent, (round(hx), round(hy)), px(7))
+            box = pygame.Rect(col.x + px(30), rect.bottom + px(22), col.w - px(60), col.bottom - rect.bottom - px(30))
+            size, lines = tx.fit_block(part.words, "semibold", [44, 40, 36, 32], box, spacing=1.08)
+            y = tx.draw_lines(surf, lines[:2], "semibold", size, box, spacing=1.08, align="center")
+            if part.category != "EC":
+                tx.draw(surf, f"{part.prob}% chance", "medium", 36, (col.centerx, y + px(4)), "midtop", self.t.dim)
+
+
+# ------------------------------------------------------------- travel cities
+
+class TravelSlide(Slide):
+    """Popular cities' forecasts in a slowly scrolling list."""
+
+    key = "travel"
+    title = "Travel Cities Forecast"
+    ROW = 84          # row height at 1080p
+    PAUSE = 2.5       # seconds to hold at the top and bottom
+
+    def available(self):
+        return bool(self.store.travel)
+
+    def _tomorrow(self) -> bool:
+        return dt.datetime.now(self.app.tz).hour >= self.cfg.travel.tomorrow_after
+
+    def _list_rect(self) -> pygame.Rect:
+        c = self.t.content
+        return pygame.Rect(c.x, c.y + self.px(96), c.w, c.h - self.px(110))
+
+    def _scroll_px(self) -> float:
+        total = len(self.store.travel) * self.px(self.ROW)
+        return max(0.0, total - self._list_rect().h)
+
+    def _speed(self) -> float:
+        return max(10.0, self.cfg.travel.scroll_speed) * self.t.s
+
+    def duration(self, page):
+        if not self.available():
+            return self.cfg.display.slide_seconds
+        return max(self.cfg.display.slide_seconds, self._scroll_px() / self._speed() + 2 * self.PAUSE)
+
+    def draw(self, surf, page, t):
+        from ..cities import day_forecast
+        c, px, tx, cx = self.t.content, self.px, self.text, self.t.cx
+        tomorrow = self._tomorrow()
+        day = dt.datetime.now(self.app.tz) + dt.timedelta(days=1 if tomorrow else 0)
+        tx.draw(surf, ("Tomorrow, " if tomorrow else "Today, ") + day.strftime("%A"), "semibold", 44,
+                (c.x + px(44), c.y + px(28)), color=self.t.accent)
+        cols = {"icon": c.x + cx(640), "wx": c.x + cx(730), "lo": c.x + cx(1560), "hi": c.x + cx(1760)}
+        tx.draw(surf, "Low", "semibold", 34, (cols["lo"], c.y + px(36)), "topright", self.t.lo)
+        tx.draw(surf, "High", "semibold", 34, (cols["hi"], c.y + px(36)), "topright", self.t.hi)
+        box = self._list_rect()
+        offset = min(self._scroll_px(), max(0.0, t - self.PAUSE) * self._speed())
+        rh = px(self.ROW)
+        clip = surf.get_clip()
+        surf.set_clip(box)
+        for i, (city, fc) in enumerate(self.store.travel):
+            y = box.y + i * rh - offset
+            if y + rh < box.y or y > box.bottom:
+                continue
+            cy = y + rh / 2
+            d = day_forecast(city, fc, tomorrow)
+            tx.draw(surf, tx.ellipsize(city.name, "semibold", 46, cx(560)), "semibold", 46,
+                    (c.x + px(44), cy), "midleft")
+            icon = self.icons.weather(d.icon, px(64), nws_size="medium")
+            if icon:
+                surf.blit(icon, icon.get_rect(center=(cols["icon"], cy)))
+            tx.draw(surf, tx.ellipsize(d.short or "--", "medium", 40, cols["lo"] - cols["wx"] - cx(170)),
+                    "medium", 40, (cols["wx"], cy), "midleft")
+            tx.draw(surf, f"{d.low}°" if d.low is not None else "--", "semibold", 48, (cols["lo"], cy),
+                    "midright", self.t.lo)
+            tx.draw(surf, f"{d.high}°" if d.high is not None else "--", "semibold", 48, (cols["hi"], cy),
+                    "midright", self.t.hi)
+        surf.set_clip(clip)
 
 
 # ----------------------------------------------------------------- bulletins
@@ -464,4 +762,5 @@ class Bulletins(Slide):
 
 
 SLIDES = {cls.key: cls for cls in (Bulletins, CurrentConditions, LocalObservations, Forecast36,
-                                   Extended, AlmanacSlide, RadarSlide)}
+                                   Extended, AlmanacSlide, RadarSlide, RegionalRadarSlide,
+                                   RegionalSatelliteSlide, RegionalMapSlide, TravelSlide, OutlookSlide)}
